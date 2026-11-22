@@ -32,6 +32,9 @@ h1,h2,h3{text-wrap:balance;font-family:var(--serif);font-weight:400;overflow-wra
 .sheet:before{content:'';position:absolute;inset:0 auto 0 10px;width:3px;border-inline:1px solid var(--rule);pointer-events:none}
 .byline{justify-content:space-between;color:var(--sub);font:italic 15px var(--serif);margin:0 0 12px}
 .byline span:first-child{color:var(--accent)}
+.difficulty{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:4px 12px;margin-block:-4px;border:1px solid var(--faint);border-radius:3px;color:var(--ink);font:14px var(--body)}
+.difficulty::after{content:'';width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:translateY(-2px) rotate(45deg)}
+.difficulty:hover{background:var(--wash)}
 .board{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));grid-template-rows:repeat(9,minmax(0,1fr));aspect-ratio:1;border:2px solid var(--ink);background:var(--paper);width:100%}
 .cell{position:relative;display:grid;place-items:center;padding:0;min-width:0;min-height:0;font:clamp(21px,2.65vw,41px)/1 var(--serif);border-radius:0;border-right:1px solid var(--edge);border-bottom:1px solid var(--edge);user-select:none;-webkit-tap-highlight-color:transparent}
 .cell:nth-child(3n){border-right:2px solid var(--ink)}
@@ -78,6 +81,13 @@ dialog h2{font-size:31px;letter-spacing:-.035em}
 .close{font-size:26px;min-width:44px;height:44px}
 dialog p{margin:12px 0;color:var(--sub)}
 dialog label{display:block;margin:16px 0 4px}
+.level-list{padding:0;border:0;margin:16px 0 0}
+.level-list label{display:grid;grid-template-columns:auto 1fr;column-gap:12px;align-items:center;cursor:pointer;padding:8px 12px;margin:0;border-top:1px solid var(--lines)}
+.level-list label:last-child{border-bottom:1px solid var(--lines)}
+.level-list label:has(:checked){background:var(--wash)}
+.level-list input{grid-row:span 2;accent-color:var(--accent);width:18px;height:18px;margin:0}
+.level-list input:focus-visible{outline:2px solid var(--pencil);outline-offset:2px}
+.level-list small{color:var(--sub);font-size:.86rem}
 select{width:100%;padding:8px;background:var(--paper);color:var(--ink);font:inherit;border:1px solid var(--edge);border-radius:3px;min-height:44px}
 dialog .primary{width:100%;margin-top:12px}
 .cover{aspect-ratio:1;border:2px solid var(--ink);display:grid;align-content:center;justify-items:center;text-align:center;padding:24px}
@@ -131,16 +141,94 @@ body{background:var(--white)}
 </style></head><body>
 <div class="wrap"><header class="mast"><div class="brand"><b class="mark" aria-hidden="true"></b>На полях</div><nav class="nav"><button class="utility" id="rules"><i data-i="book"></i>Правила</button><button class="utility" id="print"><i data-i="print"></i>Печать</button></nav></header>
 <main><div class="intro"><h1>Судоку</h1><button class="utility new" id="new"><i data-i="plus"></i>Новая партия</button></div>
-<div class="desk"><section class="sheet" aria-label="Игровой лист"><div class="byline"><span id="folio"></span><span id="difficulty"></span></div><div id="board" class="board" role="group" aria-label="Поле судоку"></div><div class="cover" id="cover" hidden></div><div class="sheetfoot"><span id="sheetmode"></span><span class="clock"><i data-i="clock"></i><span id="time">00:00</span></span></div></section>
+<div class="desk"><section class="sheet" aria-label="Игровой лист"><div class="byline"><span id="folio"></span><button class="difficulty" id="difficulty" aria-haspopup="dialog"></button></div><div id="board" class="board" role="group" aria-label="Поле судоку"></div><div class="cover" id="cover" hidden></div><div class="sheetfoot"><span id="sheetmode"></span><span class="clock"><i data-i="clock"></i><span id="time">00:00</span></span></div></section>
 <aside class="side"><div class="info"><h2>Инструменты</h2><i data-i="pen"></i></div>
 <div class="tools"><button class="tool" id="note" aria-pressed="false"><i data-i="pen"></i>Пометки</button><button class="tool" id="erase"><i data-i="erase"></i>Ластик</button><button class="tool" id="undo"><i data-i="undo"></i>Отмена</button></div>
 <div class="pad" id="pad" aria-label="Ввод цифр"></div><button class="primary check" id="check">Проверить лист</button><div class="message" id="message" role="status"></div><p class="help">Выберите клетку и впишите цифру. Для карандашных записей включите пометки.</p>
 <div class="modeinfo"><h3 id="modetitle"></h3><p id="modedesc"></p><button id="pairgame" class="lined" hidden>Играть вдвоём</button><button id="pass" class="lined" hidden>Передать карандаш</button></div></aside></div></main><footer class="foot"><span>Судоку на полях</span><a href="duel.pdf" download>Листы для дуэли в PDF</a></footer></div>
 <dialog id="modal"><div class="row"><h2 id="dialogtitle"></h2><button class="close" aria-label="Закрыть">×</button></div><div id="dialogbody"></div></dialog><div id="prints"></div><noscript>Для игры включите JavaScript. <a href="duel.pdf">Распечатать судоку</a></noscript>
 <script>
-const BANK = [["004008360000070001000360078010406937000082006060007002090800005302095614407000000", "014580037059341060000070500000035120600410003000008650070200406030000298100000000", "060034000470210603000900045690002430000400100384000009008509010030021000500048070", "302000607007902005084060900000056400000310008600207000009120706700493000000670590", "000003000894500060730802910000040020527900400146200070900700300200080607000006590", "002090000000000219940000057097001038300006042406700005600457900009130000014060003", "900006150054010793001000060080102300100004509390060801840005000020000000513020004", "280190006510007000030020000006589070000000090073012050000200063420076900300048017", "068030070430057600105980230090002060612000007000060002000001000040008001781605009", "061003020300407008847020305109562730030000010020304000000706801605000000000030070", "370801000002003400800004021040000050003018000081400273000205600020630845000089030", "000010200010276058405380700030002004081607509004100000009453682046020000000000000"], ["004008360000000000000360078010400930000082000060007000090000000300005614407000000", "302000607007902000084000900000056400000300008600200000009100700000403000000070590", "900006050054010703001000060080002000100004509300000801840005000020000000503020000", "008030070430000600105080230090002060610000007000000000000001000040008001780605009", "040010007007309040000060030000090300200506000006000009010002705070000600900001800", "060000020300007008840020300109500730030000010020004000000700801005000000000030070", "000010000010276008405080700030002004001607509000100000000003682046000000000000000", "400008030200007009070000060002000000809352600600090000900030000000200000000040751", "000780000508090200700001000094030005600100000005000107200040050000009820003000000", "649500207700004010000030000804000720090008001000006000280600000000103000403002600", "007001040000000060006000007010040000700000230903570000040009120800000000030050400", "006000010820500003709020000010050000600000200000031080300090000000062050000008039"], ["060004000400200003000900005690000030000400100384000009008500010030021000500000070", "280100006510007000000020000006509070000000090070012050000200000400076000300048017", "080000000006285001501003090245000076000100000009000005004879000008001000300000000", "190000503500960000700400020800000067000100000000500400201000000089000005000007900", "700310820400700030000002040040000083000000009059070000015093000000000000030040200", "060890010000500230000031090920000000030070000006980002004000600008056000000000100", "900000003450008106030090400000045000090301600008900030000000975000000200060700004", "520000000000004001010000902906301400000400003000208100093050070000000000040003090", "006000702000900003003160080020040900040000006000008000000300004001000600902017000", "500000023000004100807600005600400809001000000000008600790000000000100060002093000", "007005020020001006090086001075040300900060000401000000000700050000008010050003600", "400000300009000007087020600090000016008000030064009000000008000000390240010005009"]];
+const BANK = [
+  [
+    "907260100006800000410000600000100054002058903805403200620304500793582460080000702",
+    "020740950507290064000560032700005000398072145002030070200306489403000000009054020",
+    "651090030308527000000013050004078300123945060807062000006000401902406003085730900",
+    "208405060700000840406007901070056409010930027004870035140069078007300094500748000",
+    "000007100741250903300091427530400091104975032800063500270609000403002769090000005",
+    "708302960005089031000075000056040010013000640420008300080200470002054100004731502",
+    "700906800005007060908543271037200410450160090010070502080630020000482009000750030",
+    "500601400000082905040509000003910720100700860400826053010000206902108307306094508",
+    "180300602097001503060000080009700068701000435650143070003510020810402007002608314",
+    "809600517102400900760009284000800320300071008010204000000365472006048190070190863",
+    "098400100530980764100000390261750000750000000089006510900005000876020900015679080",
+    "000260009090000000003091070307026405050304261246000000430008026860542700705039048"
+  ],
+  [
+    "004008360000070001000360078010406937000082006060007002090800005302095614407000000",
+    "014580037059341060000070500000035120600410003000008650070200406030000298100000000",
+    "060034000470210603000900045690002430000400100384000009008509010030021000500048070",
+    "302000607007902005084060900000056400000310008600207000009120706700493000000670590",
+    "000003000894500060730802910000040020527900400146200070900700300200080607000006590",
+    "002090000000000219940000057097001038300006042406700005600457900009130000014060003",
+    "900006150054010793001000060080102300100004509390060801840005000020000000513020004",
+    "280190006510007000030020000006589070000000090073012050000200063420076900300048017",
+    "068030070430057600105980230090002060612000007000060002000001000040008001781605009",
+    "061003020300407008847020305109562730030000010020304000000706801605000000000030070",
+    "370801000002003400800004021040000050003018000081400273000205600020630845000089030",
+    "000010200010276058405380700030002004081607509004100000009453682046020000000000000"
+  ],
+  [
+    "004008360000000000000360078010400930000082000060007000090000000300005614407000000",
+    "302000607007902000084000900000056400000300008600200000009100700000403000000070590",
+    "900006050054010703001000060080002000100004509300000801840005000020000000503020000",
+    "008030070430000600105080230090002060610000007000000000000001000040008001780605009",
+    "040010007007309040000060030000090300200506000006000009010002705070000600900001800",
+    "060000020300007008840020300109500730030000010020004000000700801005000000000030070",
+    "000010000010276008405080700030002004001607509000100000000003682046000000000000000",
+    "400008030200007009070000060002000000809352600600090000900030000000200000000040751",
+    "000780000508090200700001000094030005600100000005000107200040050000009820003000000",
+    "649500207700004010000030000804000720090008001000006000280600000000103000403002600",
+    "007001040000000060006000007010040000700000230903570000040009120800000000030050400",
+    "006000010820500003709020000010050000600000200000031080300090000000062050000008039"
+  ],
+  [
+    "060004000400200003000900005690000030000400100384000009008500010030021000500000070",
+    "280100006510007000000020000006509070000000090070012050000200000400076000300048017",
+    "080000000006285001501003090245000076000100000009000005004879000008001000300000000",
+    "190000503500960000700400020800000067000100000000500400201000000089000005000007900",
+    "700310820400700030000002040040000083000000009059070000015093000000000000030040200",
+    "060890010000500230000031090920000000030070000006980002004000600008056000000000100",
+    "900000003450008106030090400000045000090301600008900030000000975000000200060700004",
+    "520000000000004001010000902906301400000400003000208100093050070000000000040003090",
+    "006000702000900003003160080020040900040000006000008000000300004001000600902017000",
+    "500000023000004100807600005600400809001000000000008600790000000000100060002093000",
+    "007005020020001006090086001075040300900060000401000000000700050000008010050003600",
+    "400000300009000007087020600090000016008000030064009000000008000000390240010005009"
+  ],
+  [
+    "050000060006020001870500000004900030900005008700600200008007020000000600300010009",
+    "050000002090000060100089700200608000703000005008007100001000000000040009000005830",
+    "080701304004000700900000000002008060030006800090500000009004007001900400060100500",
+    "500100000006037001100000680010005000000980000700040095800000200400300000009060040",
+    "030000020064032008007005060005000000200006004000000907100089000003607002000040000",
+    "040009002063080000900040070000000705506100300000000000490007080300610050000004000",
+    "000000000009308027010006003000000100020040960450000072008600000000009050390050000",
+    "000260080060000030047031002000500029900000000006020043438000000000900000070080000",
+    "070010000020040305000009040067000001000000006030900080000080700080000060004150000",
+    "019020000070480010300005800650000002000040000000031090000000720905600000008000000",
+    "090003000708001503000080000000000050300600100820000060001000084002100600000905020",
+    "800500040000040000000207103000000006670000230000800000005030900017050000030900002"
+  ]
+];
 const $ = id => document.getElementById(id);
-const levels = ['Средний', 'Сложный', 'Эксперт'];
+const levels = ['Лёгкий', 'Средний', 'Сложный', 'Эксперт', 'Мастер'];
+const levelDetails = [
+  'Много исходных цифр. Для разминки.',
+  'Ищите единственную цифру в клетке или единственное место для неё.',
+  'Понадобится связать несколько выводов.',
+  'Для тех, кто уверенно работает с кандидатами.',
+  'Самые трудные задачи в подборке.'
+];
 const modes = {solo:'Соло', pair:'Вместе', duel:'Дуэль'};
 const descriptions = {
   solo:'Для двоих есть общий лист и дуэль на время.',
@@ -166,6 +254,7 @@ function shuffled(values) {
 function newPuzzle(level) {
   const bank=BANK[level], seed=bank[Math.floor(Math.random()*bank.length)];
   const digits=[0,...shuffled([1,2,3,4,5,6,7,8,9])];
+  if(level>=2)return Array.from(seed,digit=>digits[Number(digit)]);
   const order=()=>shuffled([0,1,2]).flatMap(group=>shuffled([0,1,2]).map(n=>group*3+n));
   const rows=order(),cols=order(),transpose=Math.random()<.5;
   return rows.flatMap(r=>cols.map(c=>digits[+seed[transpose?c*9+r:r*9+c]]));
@@ -175,14 +264,16 @@ function startGame(mode,level,number) {
   return {mode,level,number,puzzle:newPuzzle(level),boards:[emptyBoard(),emptyBoard()],player:0,
     phase:mode==='duel'?'ready':'play',times:[0,0],selected:-1,note:false};
 }
-const saveKey='na-polyah-sudoku.v1';
+const saveKey='na-polyah-sudoku.v2';
 function loadGame() {
   try{
-    const g=JSON.parse(localStorage.getItem(saveKey));
+    const current=localStorage.getItem(saveKey);
+    const g=JSON.parse(current??localStorage.getItem('na-polyah-sudoku.v1'));
+    if(!current && g && Number.isInteger(g.level) && g.level>=0 && g.level<=2)g.level+=1;
     if(g&&Object.hasOwn(modes,g.mode)&&levels[g.level]&&g.puzzle?.length===81&&
       g.boards?.every(b=>b.values.length===81&&b.notes.length===81&&b.owners.length===81&&Array.isArray(b.history))&&g.boards.length===2)return g;
   }catch{}
-  return startGame('solo',1,1);
+  return startGame('solo',2,1);
 }
 let game=loadGame(), tickStart=null, storageFailed=false;
 const activeIndex=()=>game.mode==='duel'?game.player:0;
@@ -241,7 +332,7 @@ function drawCells(){
 }
 function render(){
   $('folio').textContent='Лист № '+String(game.number).padStart(3,'0');
-  $('difficulty').textContent=levels[game.level];
+  $('difficulty').textContent='Уровень: '+levels[game.level];
   $('sheetmode').textContent=game.mode==='solo'?'Одиночная партия':modes[game.mode]+' / Игрок '+(game.player+1);
   $('modetitle').textContent={solo:'Одиночная партия',pair:'Общий лист',duel:'Дуэль на время'}[game.mode];
   $('pairgame').hidden=game.mode!=='solo';
@@ -329,6 +420,25 @@ function setup(){
     $('modal').close();$('message').textContent='';persist();render();resume();
   };
 }
+function replacementNotice(){
+  return game.phase!=='done'&&(game.boards.some(b=>b.history.length)||game.mode==='duel'&&game.player===1)?'Новый лист заменит текущую партию.':'';
+}
+function newLocalSheet(mode,level){
+  game=startGame(mode,level,game.number+1);
+  $('modal').close();$('message').textContent='';persist();render();resume();
+}
+$('difficulty').onclick=()=>{
+  dialog('Выберите сложность','<fieldset id="level" class="level-list"><legend class="sr">Сложность нового листа</legend></fieldset><p id="replace"></p><button class="primary" id="begin">Начать новый лист</button>');
+  levels.forEach((name,i)=>{
+    const item=document.createElement('label');
+    item.innerHTML='<input type="radio" name="level" value="'+i+'"><strong>'+name+'</strong><small>'+levelDetails[i]+'</small>';
+    item.firstChild.checked=i===game.level;
+    $('level').append(item);
+  });
+  $('replace').textContent=replacementNotice();
+  $('begin').onclick=()=>newLocalSheet(game.mode,Number($('level').querySelector(':checked').value));
+};
+
 $('new').onclick=setup;
 $('pairgame').onclick=()=>{setup();$('mode').value='pair';$('mode').onchange()};
 $('rules').onclick=()=>dialog('Правила','<p>В каждой строке, каждом столбце и квадрате 3 × 3 должны встретиться все цифры от 1 до 9 по одному разу.</p><p>Пометки ставятся и стираются вручную. Повторный ввод той же цифры убирает её из пометок. Кнопка «Проверить лист» оценивает только законченное решение.</p><p>С клавиатуры используйте стрелки и цифры. Delete стирает запись, M переключает пометки, Ctrl или ⌘ + Z отменяет ход.</p><p>Уровень и режим для двоих можно выбрать в меню «Новая партия».</p>');
