@@ -103,31 +103,49 @@ dialog .primary{width:100%;margin-top:12px}
 #prints{display:none}
 @media(min-width:1200px){.desk{grid-template-columns:565px 310px;justify-content:space-between;gap:44px}
 }
-@media(max-width:720px){.wrap{padding-inline:16px;max-width:570px}
-.mast{height:58px}
-.brand{font-size:22px}
+@media screen and (max-width:720px), screen and (max-width:900px) and (orientation:portrait){
+.wrap{padding-inline:12px;max-width:590px}
+.mast{height:52px}
+.brand{font-size:22px;white-space:nowrap}
 .nav{gap:8px}
 .nav .utility{font-size:13px}
-.intro{padding:16px 0 12px}
-.intro h1{font-size:52px}
-.new{font-size:14px}
-.desk{display:flex;flex-direction:column;gap:16px;padding:4px 0 20px}
+.intro{padding:8px 0}
+.intro h1{font-size:clamp(36px,10vw,44px);white-space:nowrap}
+.new{font-size:14px;white-space:nowrap}
+.desk{display:flex;flex-direction:column;gap:12px;padding:4px 0 20px}
 .sheet,.side{width:100%}
-.sheet{padding:12px 12px 8px 16px}
-.sheet:before{left:6px}
-.cell{font-size:clamp(20px,5.6vw,32px)}
-.notes{inset:1px;font-size:clamp(7px,1.9vw,10px)}
+.sheet{width:calc(100% + 16px);margin-inline:-8px;padding:8px 2px}
+.sheet:before{display:none}
+.byline,.sheetfoot{padding-inline:8px}
 .byline{margin-bottom:8px;font-size:14px}
 .side{display:flex;flex-direction:column;padding:0}
 .info{display:none}
 .pad{order:-1;grid-template-columns:repeat(9,minmax(0,1fr));gap:4px}
-.pad button{height:45px;font-size:23px}
+.pad button{height:48px}
 .tools{margin:8px 0 0}
 .tool{flex-direction:row;gap:8px;min-height:44px}
 .check{margin-top:8px}
 .modeinfo{margin-top:16px}
 .sheetfoot{margin-top:8px}
 .foot{gap:16px;flex-wrap:wrap}
+}
+@media screen and (max-width:900px){
+#board{container-type:inline-size}
+#board .cell,.pad button{font-family:var(--body);font-style:normal;font-weight:600;font-variant-numeric:lining-nums tabular-nums;line-height:1}
+#board .cell{font-size:clamp(26px,7.8vw,44px);font-size:clamp(24px,9cqi,48px)}
+#board .cell.entered{font-style:normal;color:var(--pencil)}
+#board .cell.partner{color:var(--green)}
+#board .notes{inset:1px;font-size:clamp(10px,2.9vw,16px);font-size:clamp(10px,3.4cqi,17px);font-weight:600;color:var(--ink)}
+.pad button{font-size:clamp(25px,7vw,32px)}
+}
+@media screen and (max-width:455px){
+.pad{grid-template-columns:repeat(10,minmax(0,1fr))}
+.pad button{grid-column:span 2}
+.pad button:nth-child(6){grid-column:2/span 2}
+}
+@media screen and (max-width:360px){
+.brand{font-size:20px}
+.nav .utility{gap:4px;padding-inline:4px}
 }
 @media print{@page{size:A4 portrait;margin:18mm}
 body{background:var(--white)}
