@@ -91,6 +91,11 @@ dialog label{display:block;margin:16px 0 4px}
 select{width:100%;padding:8px;background:var(--paper);color:var(--ink);font:inherit;border:1px solid var(--edge);border-radius:3px;min-height:44px}
 dialog .primary{width:100%;margin-top:12px}
 .cover{aspect-ratio:1;border:2px solid var(--ink);display:grid;align-content:center;justify-items:center;text-align:center;padding:24px}
+.cover{min-width:0}
+.cover p{overflow-wrap:anywhere}
+.cover input{width:min(100%,320px);min-height:44px;padding:8px;border:1px solid var(--edge);background:var(--paper);color:var(--ink);font:14px var(--body)}
+.invite-actions{display:flex;justify-content:center;flex-wrap:wrap;gap:8px;margin-top:12px}
+#countdown{font:54px var(--serif);color:var(--accent)}
 .cover h2{font-size:34px}
 .cover p{margin:12px 0 20px}
 .sr{position:absolute;clip-path:inset(50%);width:1px;height:1px;overflow:hidden}
@@ -141,11 +146,11 @@ body{background:var(--white)}
 </style></head><body>
 <div class="wrap"><header class="mast"><div class="brand"><b class="mark" aria-hidden="true"></b>На полях</div><nav class="nav"><button class="utility" id="rules"><i data-i="book"></i>Правила</button><button class="utility" id="print"><i data-i="print"></i>Печать</button></nav></header>
 <main><div class="intro"><h1>Судоку</h1><button class="utility new" id="new"><i data-i="plus"></i>Новая партия</button></div>
-<div class="desk"><section class="sheet" aria-label="Игровой лист"><div class="byline"><span id="folio"></span><button class="difficulty" id="difficulty" aria-haspopup="dialog"></button></div><div id="board" class="board" role="group" aria-label="Поле судоку"></div><div class="cover" id="cover" hidden></div><div class="sheetfoot"><span id="sheetmode"></span><span class="clock"><i data-i="clock"></i><span id="time">00:00</span></span></div></section>
+<div class="desk"><section class="sheet" aria-label="Игровой лист"><div class="byline"><span id="folio"></span><button class="difficulty" id="difficulty" aria-haspopup="dialog"></button></div><div id="board" class="board" role="group" aria-label="Поле судоку"></div><div class="cover" id="cover" aria-live="polite" hidden></div><div class="sheetfoot"><span id="sheetmode"></span><span class="clock"><i data-i="clock"></i><span id="time">00:00</span></span></div></section>
 <aside class="side"><div class="info"><h2>Инструменты</h2><i data-i="pen"></i></div>
 <div class="tools"><button class="tool" id="note" aria-pressed="false"><i data-i="pen"></i>Пометки</button><button class="tool" id="erase"><i data-i="erase"></i>Ластик</button><button class="tool" id="undo"><i data-i="undo"></i>Отмена</button></div>
 <div class="pad" id="pad" aria-label="Ввод цифр"></div><button class="primary check" id="check">Проверить лист</button><div class="message" id="message" role="status"></div><p class="help">Выберите клетку и впишите цифру. Для карандашных записей включите пометки.</p>
-<div class="modeinfo"><h3 id="modetitle"></h3><p id="modedesc"></p><button id="pairgame" class="lined" hidden>Играть вдвоём</button><button id="pass" class="lined" hidden>Передать карандаш</button></div></aside></div></main><footer class="foot"><span>Судоку на полях</span><a href="duel.pdf" download>Листы для дуэли в PDF</a></footer></div>
+<div class="modeinfo"><h3 id="modetitle"></h3><p id="modedesc"></p><button id="pairgame" class="lined" hidden>Играть вдвоём</button><button id="onlinegame" class="lined">Дуэль по ссылке</button><button id="pass" class="lined" hidden>Передать карандаш</button></div></aside></div></main><footer class="foot"><span>Судоку на полях</span><a href="duel.pdf" download>Листы для дуэли в PDF</a></footer></div>
 <dialog id="modal"><div class="row"><h2 id="dialogtitle"></h2><button class="close" aria-label="Закрыть">×</button></div><div id="dialogbody"></div></dialog><div id="prints"></div><noscript>Для игры включите JavaScript. <a href="duel.pdf">Распечатать судоку</a></noscript>
 <script>
 const BANK = [
@@ -229,9 +234,10 @@ const levelDetails = [
   'Для тех, кто уверенно работает с кандидатами.',
   'Самые трудные задачи в подборке.'
 ];
-const modes = {solo:'Соло', pair:'Вместе', duel:'Дуэль'};
+const modes = {solo:'Соло', pair:'Вместе', duel:'Дуэль на одном экране', online:'Дуэль по ссылке'};
 const descriptions = {
-  solo:'Для двоих есть общий лист и дуэль на время.',
+  online:'Оба играют на своих устройствах. Победит тот, кто первым нажмёт «Проверить лист» с верным решением.',
+  solo:'Решайте вместе на одном экране или соревнуйтесь по ссылке.',
   pair:'Общий лист и два цвета чернил. Передавайте карандаш, когда захотите сменить ход.',
   duel:'Два игрока по очереди решают одну задачу. Выигрывает тот, кто верно заполнит её быстрее.'
 };
@@ -270,7 +276,7 @@ function loadGame() {
     const current=localStorage.getItem(saveKey);
     const g=JSON.parse(current??localStorage.getItem('na-polyah-sudoku.v1'));
     if(!current && g && Number.isInteger(g.level) && g.level>=0 && g.level<=2)g.level+=1;
-    if(g&&Object.hasOwn(modes,g.mode)&&levels[g.level]&&g.puzzle?.length===81&&
+    if(g&&g.mode!=='online'&&Object.hasOwn(modes,g.mode)&&levels[g.level]&&g.puzzle?.length===81&&
       g.boards?.every(b=>b.values.length===81&&b.notes.length===81&&b.owners.length===81&&Array.isArray(b.history))&&g.boards.length===2)return g;
   }catch{}
   return startGame('solo',2,1);
@@ -279,6 +285,7 @@ let game=loadGame(), tickStart=null, storageFailed=false;
 const activeIndex=()=>game.mode==='duel'?game.player:0;
 const activeBoard=()=>game.boards[activeIndex()];
 function persist(){
+  if(game.mode==='online')return;
   try{localStorage.setItem(saveKey,JSON.stringify(game))}
   catch{if(!storageFailed){storageFailed=true;$('message').textContent='Браузер не сохранил партию. Оставьте вкладку открытой.'}}
 }
@@ -286,13 +293,20 @@ function settle(){
   if(tickStart!==null){game.times[activeIndex()]+=performance.now()-tickStart;tickStart=null}
 }
 function resume(){
-  if(tickStart===null&&!document.hidden&&game.phase==='play'&&!$('modal').open)tickStart=performance.now();
+  if(game.mode!=='online'&&tickStart===null&&!document.hidden&&game.phase==='play'&&!$('modal').open)tickStart=performance.now();
 }
 function formatTime(ms){
   const s=Math.floor(ms/1000);
   return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
 }
-function clock(){const current=game.times[activeIndex()]+(tickStart===null?0:performance.now()-tickStart);$('time').textContent=formatTime(current)}
+function clock(){
+  if(game.mode==='online'){
+    const ms=race?.result?.elapsedMs ?? (race?.startAt?Math.max(0,Date.now()-race.startAt):0);
+    $('time').textContent=formatTime(ms);
+    if(game.phase==='countdown' && $('countdown'))$('countdown').textContent=Math.max(1, Math.ceil((race.startAt-Date.now())/1000));
+    return;
+  }
+  const current=game.times[activeIndex()]+(tickStart===null?0:performance.now()-tickStart);$('time').textContent=formatTime(current)}
 setInterval(clock,500);
 setInterval(()=>{settle();persist();resume()},5000);
 document.addEventListener('visibilitychange',()=>{settle();persist();resume()});
@@ -332,9 +346,14 @@ function drawCells(){
 }
 function render(){
   $('folio').textContent='Лист № '+String(game.number).padStart(3,'0');
-  $('difficulty').textContent='Уровень: '+levels[game.level];
-  $('sheetmode').textContent=game.mode==='solo'?'Одиночная партия':modes[game.mode]+' / Игрок '+(game.player+1);
-  $('modetitle').textContent={solo:'Одиночная партия',pair:'Общий лист',duel:'Дуэль на время'}[game.mode];
+  const online=game.mode==='online';
+  $('difficulty').textContent=online&&race.role==='guest'&&!race.connected?'Подключение…':'Уровень: '+levels[game.level];
+  $('difficulty').disabled=online;
+  $('onlinegame').hidden=online;
+  $('new').lastChild.textContent=online?'Выйти из дуэли':'Новая партия';
+  $('print').disabled=online;
+  $('sheetmode').textContent=online?'Дуэль по ссылке':game.mode==='solo'?'Одиночная партия':modes[game.mode]+' / Игрок '+(game.player+1);
+  $('modetitle').textContent={solo:'Одиночная партия',pair:'Общий лист',duel:'Дуэль на время',online:'Дуэль по ссылке'}[game.mode];
   $('pairgame').hidden=game.mode!=='solo';
   $('modedesc').textContent=descriptions[game.mode];$('pass').hidden=game.mode!=='pair'||game.phase!=='play';
   $('note').setAttribute('aria-pressed',String(game.note));
@@ -342,7 +361,7 @@ function render(){
   for(const el of [...$('pad').children,$('note'),$('erase'),$('check')])el.disabled=!playable;
   $('undo').disabled=!playable||!activeBoard().history.length;
   $('board').hidden=!playable;$('cover').hidden=playable;
-  if(playable)drawCells();else renderCover();
+  if(playable)drawCells();else if(online)renderRaceCover();else renderCover();
   clock();
 }
 function renderCover(){
@@ -385,6 +404,7 @@ $('undo').onclick=undo;$('erase').onclick=()=>edit(0,true);
 $('note').onclick=()=>{game.note=!game.note;persist();render()};
 $('pass').onclick=()=>{game.player=1-game.player;game.selected=-1;game.note=false;$('message').textContent='';persist();render()};
 function correct(values){
+  if(!Array.isArray(values)||values.length!==81||!values.every(n=>Number.isInteger(n)&&n>=1&&n<=9))return false;
   const unique=a=>new Set(a).size===9;
   for(let k=0;k<9;k++){
     const row=[],col=[],box=[];
@@ -398,6 +418,16 @@ $('check').onclick=()=>{
   const vals=game.puzzle.map((v,i)=>v||activeBoard().values[i]);
   if(vals.includes(0)){$('message').textContent='Заполните весь лист перед проверкой.';return}
   if(!correct(vals)){$('message').textContent='Лист пока не сходится. Можно продолжить решение.';return}
+  if(game.mode==='online'){
+    if(race.submitted)return;
+    race.submitted=true;
+    $('message').textContent='Решение отправлено. Ждём результат.';
+    if(!race.net.finish(vals) && game.phase==='play'){
+      race.submitted=false;
+      $('message').textContent='Не удалось передать результат. Попробуйте проверить лист ещё раз.';
+    }
+    return;
+  }
   settle();game.selected=-1;game.note=false;$('message').textContent='';
   if(game.mode==='duel'&&game.player===0){game.player=1;game.phase='ready'}else game.phase='done';
   persist();render();
@@ -413,11 +443,17 @@ function setup(){
   for(const [id,name] of Object.entries(modes))$('mode').add(new Option(name,id));
   levels.forEach((name,i)=>$('level').add(new Option(name,i)));
   $('mode').value=game.mode;$('level').value=game.level;
-  $('mode').onchange=()=>$('choice').textContent=descriptions[$('mode').value];$('mode').onchange();
-  if(game.phase!=='done'&&(game.boards.some(b=>b.history.length)||game.mode==='duel'&&game.player===1))$('replace').textContent='Новая партия заменит текущий лист.';
+  const warn=()=>{$('replace').textContent=$('mode').value==='online'?'Текущая партия сохранится на этом устройстве.':replacementNotice()};
+  $('mode').onchange=()=>{
+    $('choice').textContent=descriptions[$('mode').value];
+    $('begin').textContent=$('mode').value==='online'?'Создать приглашение':'Начать партию';
+    warn();
+  };
+  $('mode').onchange();
   $('begin').onclick=()=>{
-    game=startGame($('mode').value,Number($('level').value),game.number+1);
-    $('modal').close();$('message').textContent='';persist();render();resume();
+    const mode=$('mode').value,level=Number($('level').value);
+    if(mode==='online'){$('modal').close();openRace(level);return}
+    newLocalSheet(mode,level);
   };
 }
 function replacementNotice(){
@@ -438,10 +474,10 @@ $('difficulty').onclick=()=>{
   $('replace').textContent=replacementNotice();
   $('begin').onclick=()=>newLocalSheet(game.mode,Number($('level').querySelector(':checked').value));
 };
-
-$('new').onclick=setup;
+$('new').onclick=()=>game.mode==='online'?askLeaveRace():setup();
+$('onlinegame').onclick=()=>{setup();$('mode').value='online';$('mode').onchange()};
 $('pairgame').onclick=()=>{setup();$('mode').value='pair';$('mode').onchange()};
-$('rules').onclick=()=>dialog('Правила','<p>В каждой строке, каждом столбце и квадрате 3 × 3 должны встретиться все цифры от 1 до 9 по одному разу.</p><p>Пометки ставятся и стираются вручную. Повторный ввод той же цифры убирает её из пометок. Кнопка «Проверить лист» оценивает только законченное решение.</p><p>С клавиатуры используйте стрелки и цифры. Delete стирает запись, M переключает пометки, Ctrl или ⌘ + Z отменяет ход.</p><p>Уровень и режим для двоих можно выбрать в меню «Новая партия».</p>');
+$('rules').onclick=()=>dialog('Правила','<p>В каждой строке, каждом столбце и квадрате 3 × 3 должны встретиться все цифры от 1 до 9 по одному разу.</p><p>Пометки ставятся и стираются вручную. Повторный ввод той же цифры убирает её из пометок. Кнопка «Проверить лист» оценивает только законченное решение.</p><p>С клавиатуры используйте стрелки и цифры. Delete стирает запись, M переключает пометки, Ctrl или ⌘ + Z отменяет ход.</p><p>Сложность выбирается над полем. Для игры на двух устройствах выберите «Дуэль по ссылке» и нажмите «Готов» каждый на своём экране.</p>');
 document.addEventListener('keydown',e=>{
   if($('modal').open||game.phase!=='play'||e.altKey)return;
   if((e.ctrlKey||e.metaKey)&&['z','я'].includes(e.key.toLowerCase())){e.preventDefault();undo();return}
@@ -457,6 +493,7 @@ document.addEventListener('keydown',e=>{
   }
 });
 function printSheets(){
+  if(game.mode==='online'){$('prints').replaceChildren();return}
   const pages=[];
   for(let p=0;p<(game.mode==='duel'?2:1);p++){
     const page=document.createElement('section');page.className='printsheet';
@@ -470,5 +507,7 @@ function printSheets(){
 }
 window.addEventListener('beforeprint',printSheets);
 $('print').onclick=()=>{printSheets();window.print()};
+let race=null;
 render();resume();persist();
-</script></body></html>
+</script>
+<script src="race-ui.js"></script></body></html>
