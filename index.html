@@ -70,6 +70,9 @@ h1,h2,h3{text-wrap:balance;font-family:var(--serif);font-weight:400;overflow-wra
 .modeinfo p{margin-top:4px;font-size:.9rem;color:var(--sub)}
 .lined{border:1px solid var(--edge);min-height:44px;padding:8px 16px;border-radius:3px}
 .modeinfo button{margin-top:8px}
+.duel-connection{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;border-top:1px solid var(--edge);padding-top:12px;font-size:.9rem}
+#race-storage-warning{margin-top:8px;color:var(--accent);font-size:.9rem}
+.end-duel{width:100%;margin-top:8px}
 .foot{border-top:1px solid var(--edge);padding:16px 0 24px;display:flex;justify-content:space-between;color:var(--sub);font-size:.85rem}
 .foot a{text-underline-offset:4px}
 .message{color:var(--accent);font-size:.9rem;margin-top:8px}
@@ -119,7 +122,7 @@ dialog .primary{width:100%;margin-top:12px}
 .sheet,.side{width:100%}
 .sheet{width:calc(100% + 16px);margin-inline:-8px;padding:8px 2px}
 .sheet:before{display:none}
-.byline,.sheetfoot{padding-inline:8px}
+.byline,.sheetfoot,.duel-connection,#race-storage-warning{padding-inline:8px}
 .byline{margin-bottom:8px;font-size:14px}
 .side{display:flex;flex-direction:column;padding:0}
 .info{display:none}
@@ -167,11 +170,13 @@ body{background:var(--white)}
 </style></head><body>
 <div class="wrap"><header class="mast"><div class="brand"><b class="mark" aria-hidden="true"></b>На полях</div><nav class="nav"><button class="utility" id="rules"><i data-i="book"></i>Правила</button><button class="utility" id="print"><i data-i="print"></i>Печать</button></nav></header>
 <main><div class="intro"><h1>Судоку</h1><button class="utility new" id="new"><i data-i="plus"></i>Новая партия</button></div>
-<div class="desk"><section class="sheet" aria-label="Игровой лист"><div class="byline"><span id="folio"></span><button class="difficulty" id="difficulty" aria-haspopup="dialog"></button></div><div id="board" class="board" role="group" aria-label="Поле судоку"></div><div class="cover" id="cover" aria-live="polite" hidden></div><div class="sheetfoot"><span id="sheetmode"></span><span class="clock"><i data-i="clock"></i><span id="time">00:00</span></span></div></section>
+<div class="desk"><section class="sheet" aria-label="Игровой лист"><div class="byline"><span id="folio"></span><button class="difficulty" id="difficulty" aria-haspopup="dialog"></button></div><div id="board" class="board" role="group" aria-label="Поле судоку"></div><div class="cover" id="cover" aria-live="polite" hidden></div><div class="sheetfoot"><span id="sheetmode"></span><span class="clock"><i data-i="clock"></i><span id="time">00:00</span></span></div>
+<div id="duel-connection" class="duel-connection" hidden><span id="duel-connection-text" role="status"></span><button id="retry-duel" type="button" class="lined">Подключиться сейчас</button></div>
+<p id="race-storage-warning" role="status" hidden>Браузер не сохранил дуэль на этом устройстве. Оставьте вкладку открытой.</p></section>
 <aside class="side"><div class="info"><h2>Инструменты</h2><i data-i="pen"></i></div>
 <div class="tools"><button class="tool" id="note" aria-pressed="false"><i data-i="pen"></i>Пометки</button><button class="tool" id="erase"><i data-i="erase"></i>Ластик</button><button class="tool" id="undo"><i data-i="undo"></i>Отмена</button></div>
 <div class="pad" id="pad" aria-label="Ввод цифр"></div><button class="primary check" id="check">Проверить лист</button><div class="message" id="message" role="status"></div><p class="help">Выберите клетку и впишите цифру. Для карандашных записей включите пометки.</p>
-<div class="modeinfo"><h3 id="modetitle"></h3><p id="modedesc"></p><button id="pairgame" class="lined" hidden>Играть вдвоём</button><button id="onlinegame" class="lined">Дуэль по ссылке</button><button id="pass" class="lined" hidden>Передать карандаш</button></div></aside></div></main><footer class="foot"><span>Судоку на полях</span><a href="duel.pdf" download>Листы для дуэли в PDF</a></footer></div>
+<div class="modeinfo"><h3 id="modetitle"></h3><p id="modedesc"></p><button id="pairgame" class="lined" hidden>Играть вдвоём</button><button id="resume-duel" class="lined" hidden>Вернуться в дуэль</button><button id="onlinegame" class="lined">Дуэль по ссылке</button><button id="pass" class="lined" hidden>Передать карандаш</button></div></aside></div></main><footer class="foot"><span>Судоку на полях</span><a href="duel.pdf" download>Листы для дуэли в PDF</a></footer></div>
 <dialog id="modal"><div class="row"><h2 id="dialogtitle"></h2><button class="close" aria-label="Закрыть">×</button></div><div id="dialogbody"></div></dialog><div id="prints"></div><noscript>Для игры включите JavaScript. <a href="duel.pdf">Распечатать судоку</a></noscript>
 <script src="duel-puzzles.js"></script>
 <script>
@@ -258,7 +263,7 @@ const levelDetails = [
 ];
 const modes = {solo:'Соло', pair:'Вместе', duel:'Дуэль на одном экране', online:'Дуэль по ссылке'};
 const descriptions = {
-  online:'Каждый выбирает свой уровень до старта. На лёгком листе открыто больше цифр. Побеждает первый, кто сдаст верное решение.',
+  online:'Каждый выбирает свой уровень до старта. На лёгком листе открыто больше цифр. Побеждает тот, чьё верное решение сервер получит первым.',
   solo:'Решайте вместе на одном экране или соревнуйтесь по ссылке.',
   pair:'Общий лист и два цвета чернил. Передавайте карандаш, когда захотите сменить ход.',
   duel:'Выберите уровень для каждого и решайте по очереди. У обоих одно решение. Побеждает тот, кто заполнит свой лист быстрее.'
@@ -312,7 +317,7 @@ let game=loadGame(), tickStart=null, storageFailed=false;
 const activeIndex=()=>game.mode==='duel'?game.player:0;
 const activeBoard=()=>game.boards[activeIndex()];
 function persist(){
-  if(game.mode==='online')return;
+  if(game.mode==='online'){saveRace();return}
   try{localStorage.setItem(saveKey,JSON.stringify(game))}
   catch{if(!storageFailed){storageFailed=true;$('message').textContent='Браузер не сохранил партию. Оставьте вкладку открытой.'}}
 }
@@ -352,7 +357,7 @@ for(let d=1;d<=9;d++){
   $('pad').append(button);
 }
 function selectCell(i){
-  if(game.phase!=='play')return;
+  if(game.phase!=='play'||(game.mode==='online'&&race.submitted))return;
   game.selected=i;$('message').textContent='';drawCells();cells[i].focus({preventScroll:true});persist();
 }
 function drawCells(){
@@ -374,7 +379,7 @@ function drawCells(){
 function render(){
   $('folio').textContent='Лист № '+String(game.number).padStart(3,'0');
   const online=game.mode==='online';
-  $('difficulty').textContent=online&&race.role==='guest'&&!race.connected?'Подключение…':'Уровень: '+levels[game.level];
+  $('difficulty').textContent=online&&race.role==='guest'&&!race.connected&&game.phase==='lobby'?'Подключение…':'Уровень: '+levels[game.level];
   $('difficulty').disabled=online;
   $('onlinegame').hidden=online;
   $('new').lastChild.textContent=online?'Выйти из дуэли':'Новая партия';
@@ -385,8 +390,9 @@ function render(){
   $('modedesc').textContent=descriptions[game.mode];$('pass').hidden=game.mode!=='pair'||game.phase!=='play';
   $('note').setAttribute('aria-pressed',String(game.note));
   const playable=game.phase==='play';
-  for(const el of [...$('pad').children,$('note'),$('erase'),$('check')])el.disabled=!playable;
-  $('undo').disabled=!playable||!activeBoard().history.length;
+  const writable=playable&&!(online&&race.submitted);
+  for(const el of [...$('pad').children,$('note'),$('erase'),$('check')])el.disabled=!writable;
+  $('undo').disabled=!writable||!activeBoard().history.length;
   $('board').hidden=!playable;$('cover').hidden=playable;
   if(playable)drawCells();else if(online)renderRaceCover();else renderCover();
   clock();
@@ -410,7 +416,7 @@ function renderCover(){
   $('cover').replaceChildren(title,body,btn);
 }
 function edit(d,clear=false){
-  if(game.phase!=='play')return;
+  if(game.phase!=='play'||(game.mode==='online'&&race.submitted))return;
   const i=game.selected,b=activeBoard();
   if(i<0||game.puzzle[i]){$('message').textContent=i<0?'Сначала выберите клетку.':'Эта цифра напечатана на листе.';return}
   const mark=game.note&&!clear;
@@ -422,7 +428,7 @@ function edit(d,clear=false){
   $('message').textContent='';persist();render();
 }
 function undo(){
-  if(game.phase!=='play')return;
+  if(game.phase!=='play'||(game.mode==='online'&&race.submitted))return;
   const b=activeBoard(),entry=b.history.pop();if(!entry)return;
   const [i,v,n,o]=entry;b.values[i]=v;b.notes[i]=n;b.owners[i]=o;game.selected=i;
   $('message').textContent='';persist();render();
@@ -448,11 +454,11 @@ $('check').onclick=()=>{
   if(game.mode==='online'){
     if(race.submitted)return;
     race.submitted=true;
-    $('message').textContent='Решение отправлено. Ждём результат.';
-    if(!race.net.finish(vals) && game.phase==='play'){
-      race.submitted=false;
-      $('message').textContent='Не удалось передать результат. Попробуйте проверить лист ещё раз.';
-    }
+    saveRace();
+    $('message').textContent='Готовый лист ждёт подтверждения сервера.';
+    sendRequestedFinish();
+    updateLinkStatus();
+    render();
     return;
   }
   settle();game.selected=-1;game.note=false;$('message').textContent='';
@@ -548,4 +554,5 @@ $('print').onclick=()=>{printSheets();window.print()};
 let race=null;
 render();resume();persist();
 </script>
-<script src="race-ui.js?v=2"></script></body></html>
+<script src="duel-recovery.js?v=1"></script>
+<script src="race-ui.js?v=3"></script></body></html>

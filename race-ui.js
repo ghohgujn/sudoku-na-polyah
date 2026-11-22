@@ -9,47 +9,160 @@ function loadDuelTransport() {
       script.onerror = () => reject(new Error('Не удалось загрузить сетевой режим. Проверьте интернет и попробуйте ещё раз.'));
       document.head.append(script);
     });
-    transportLoading = loadScript('duel-network.js?v=2')
+    transportLoading = loadScript('duel-network.js?v=3')
       .catch(error => { transportLoading = null; throw error; });
   }
   return transportLoading;
 }
 
-async function openRace(level, roomId) {
+function refreshResumeButton() {
+  $('resume-duel').hidden = !!race || !DuelRecovery.find();
+}
+
+function saveRace() {
+  if (!race?.ownsSeat || !race.auth || ['finished','interrupted'].includes(game.phase)) return;
+  const saved = DuelRecovery.put(race.key, {
+    auth:race.auth, game, createdAt:race.createdAt, startAt:race.startAt,
+    finishRequested:race.submitted
+  });
+  $('race-storage-warning').hidden = saved;
+}
+
+function updateLinkStatus() {
+  const offline = !!race && race.offline && !['finished','interrupted'].includes(game.phase);
+  $('duel-connection').hidden = !offline;
+  if (offline) {
+    let status = 'Подключаемся к вашей дуэли…';
+    if (game.phase === 'play') status = race.submitted
+      ? 'Связь потеряна. Отправим готовый лист при подключении.'
+      : 'Связь потеряна. Можно продолжать решать. Подключаемся снова…';
+    $('duel-connection-text').textContent = status;
+  }
+}
+
+function sendRequestedFinish() {
+  if (!race?.submitted || race.finishInFlight || race.net?.phase !== 'playing') return;
+  const vals = game.puzzle.map((d,i) => d || activeBoard().values[i]);
+  race.finishInFlight = race.net.finish(vals);
+  if (!race.finishInFlight) {
+    race.submitted = false;
+    $('message').textContent = 'Проверьте лист ещё раз.';
+    saveRace();
+  }
+}
+
+function openRace(level, roomId, record = null) {
   if (race) return;
   settle();
   persist();
-  const session = {previous: game, role: roomId ? 'guest' : 'host', connected: false,
-    selfReady: false, otherReady: false, submitted: false, startAt: 0, net: null};
+  const session = {
+    previous:game, role:record?.auth.role ?? (roomId ? 'guest' : 'host'),
+    key:record?.key ?? (roomId?.match(/^sudoku-([a-f0-9]{8})([a-f0-9]{4})([a-f0-9]{4})([a-f0-9]{4})([a-f0-9]{12})$/)?.slice(1).join('-') || crypto.randomUUID()),
+    roomId, level, auth:null, createdAt:record?.createdAt ?? Date.now(),
+    ownsSeat:false, connected:false, selfReady:false, otherReady:false, submitted:false,
+    startAt:0, net:null, offline:!navigator.onLine
+  };
   race = session;
-  game = {...session.previous, mode: 'online', level, selected: -1, note: false,
-    puzzle: Array(81).fill(0), boards: [emptyBoard(), emptyBoard()], phase: 'lobby',
-    player: 0, times: [0, 0]};
+  game = {number:session.previous.number, mode:'online', level, selected:-1, note:false,
+    puzzle:Array(81).fill(0), boards:[emptyBoard(), emptyBoard()], phase:'lobby',
+    player:0, times:[0,0]};
   $('message').textContent = '';
+  $('resume-duel').hidden = true;
+  updateLinkStatus();
   render();
+  acquireRaceSeat(session, !!record);
+}
 
+function acquireRaceSeat(session, restoring) {
+  // Only one tab may write this player's board. Re-read it after a tab handoff.
+  const start = () => {
+    if (race !== session) return;
+    const latest = DuelRecovery.get(session.key);
+    session.ownsSeat = true;
+    if (restoring && !latest) {
+      handleRaceEvent('error', {message:'Эта сохранённая дуэль уже завершена или истекла.'});
+      return;
+    }
+    if (latest) {
+      session.auth = latest.auth;
+      session.role = latest.auth.role;
+      session.createdAt = latest.createdAt;
+      session.startAt = latest.startAt || 0;
+      session.submitted = latest.finishRequested === true;
+      game = latest.game;
+      // Countdown and lobby are reconciled with the server before a new start.
+      if (game.phase !== 'play') game.phase = 'lobby';
+      if (session.submitted) $('message').textContent = 'Отправим готовый лист, когда связь восстановится.';
+    }
+    session.waitingForTab = false;
+    updateLinkStatus();
+    render();
+    connectRace(session);
+  };
+  if (!navigator.locks) { start(); return; }
+  session.lockAbort = new AbortController();
+  const waiting = setTimeout(() => {
+    if (race === session && !session.ownsSeat) { session.waitingForTab = true; render(); }
+  }, 250);
+  navigator.locks.request('na-polyah-duel:' + session.key, {signal:session.lockAbort.signal}, async () => {
+    clearTimeout(waiting);
+    if (race !== session) return;
+    const held = new Promise(resolve => { session.release = resolve; });
+    start();
+    await held;
+  }).catch(error => {
+    clearTimeout(waiting);
+    if (race === session && error.name !== 'AbortError') {
+      handleRaceEvent('error', {message:'Не удалось открыть сохранение дуэли в этой вкладке.'});
+    }
+  });
+}
+
+async function connectRace(session) {
+  if (session.loading || session.net || !session.ownsSeat) return;
+  session.loading = true;
   try {
     await loadDuelTransport();
-    if (race !== session) return;
+    if (race !== session || !session.ownsSeat) return;
     session.net = new DuelNetwork({
-      onEvent: (type, data) => { if (race === session) handleRaceEvent(type, data); },
-      validate: (values, puzzle) => correct(values) &&
-        puzzle.length === 81 && puzzle.every((given, i) => !given || given === values[i])
+      onEvent:(type,data) => { if (race === session) handleRaceEvent(type,data); },
+      validate:(values,puzzle) => correct(values) &&
+        puzzle.length === 81 && puzzle.every((given,i) => !given || given === values[i])
     });
-    if (roomId) await session.net.join(roomId);
+    if (session.auth) await session.net.resume(session.auth);
+    else if (session.roomId) await session.net.join(session.roomId);
     else {
       const {sheets} = makeDuelSheets();
-      game.puzzle = sheets[level];
-      await session.net.host({level, puzzle: game.puzzle, sheets});
+      game.puzzle = sheets[session.level];
+      await session.net.host({level:session.level, puzzle:game.puzzle, sheets});
     }
-  } catch (error) {
-    if (race === session) handleRaceEvent('error', {message: error.message});
-  }
+  } catch {
+    if (race === session) {
+      session.net?.suspend(); session.net = null;
+      session.offline = true;
+      updateLinkStatus();
+    }
+  } finally { session.loading = false; }
+}
+
+function retryRace() {
+  if (!race?.ownsSeat) return;
+  if (race.net) race.net.retryNow();
+  else connectRace(race);
 }
 
 function handleRaceEvent(type, data = {}) {
   if (!race || game.phase === 'finished' || game.phase === 'interrupted') return;
   switch (type) {
+    case 'pending':
+    case 'session':
+      race.auth = data;
+      saveRace();
+      return;
+    case 'connection':
+      race.offline = !data.online;
+      updateLinkStatus();
+      return;
     case 'invite':
       race.url = data.url;
       break;
@@ -73,10 +186,11 @@ function handleRaceEvent(type, data = {}) {
     case 'countdown':
     case 'start':
       race.startAt = data.startAt;
-      game.phase = type === 'start' ? 'play' : 'countdown';
+      if (type === 'start') game.phase = 'play';
+      else if (game.phase !== 'play') game.phase = 'countdown';
       break;
     case 'rejected':
-      if (data.action === 'finish') race.submitted = false;
+      if (data.action === 'finish') { race.submitted = false; race.finishInFlight = false; }
       $('message').textContent = data.message || 'Сервер не принял решение. Можно продолжить игру.';
       break;
     case 'result':
@@ -92,6 +206,12 @@ function handleRaceEvent(type, data = {}) {
     default:
       return;
   }
+  if (type === 'result' || type === 'error') {
+    if (race.ownsSeat) DuelRecovery.drop(race.key);
+    $('race-storage-warning').hidden = true;
+  } else saveRace();
+  if (type === 'start') sendRequestedFinish();
+  updateLinkStatus();
   render();
 }
 
@@ -137,6 +257,12 @@ function renderRaceCover() {
   const cover = $('cover');
   const title = document.createElement('h2'), info = document.createElement('p');
   cover.replaceChildren(title, info);
+  if (race.waitingForTab && !race.ownsSeat) {
+    title.textContent = 'Дуэль открыта в другой вкладке';
+    info.textContent = 'Закройте ту вкладку, чтобы продолжить здесь с последнего хода.';
+    cover.append(raceButton('К моей партии', 'back-to-sheet', () => leaveRace(false)));
+    return;
+  }
   if (game.phase === 'finished' || game.phase === 'interrupted') {
     if (game.phase === 'finished') {
       title.textContent = race.result.winner === race.role ? 'Вы победили!' : 'Соперник победил';
@@ -145,7 +271,7 @@ function renderRaceCover() {
       title.textContent = 'Дуэль прервана';
       info.textContent = race.failure;
     }
-    cover.append(raceButton('Вернуться к своей партии', 'leave-duel', leaveRace));
+    cover.append(raceButton('Вернуться к своей партии', 'leave-duel', () => leaveRace(false)));
     return;
   }
   if (game.phase === 'countdown') {
@@ -161,7 +287,9 @@ function renderRaceCover() {
     info.textContent = (race.selfReady ? 'Вы готовы.' : 'Вы на месте.') + ' ' +
       (race.otherReady ? 'Соперник готов.' : 'Соперник на месте.');
   } else if (race.url) {
-    info.textContent = 'Отправьте ссылку сопернику и оставьте эту вкладку открытой.';
+    info.textContent = 'Отправьте ссылку сопернику. В эту комнату можно вернуться с этого устройства.';
+  } else if (race.auth?.token) {
+    info.textContent = 'Восстанавливаем ваше место в комнате…';
   } else {
     info.textContent = race.role === 'guest' ? 'Подключаемся к сопернику…' : 'Создаём приглашение…';
   }
@@ -195,24 +323,81 @@ function renderRaceCover() {
   }
 }
 
-function leaveRace() {
+function leaveRace(roomEnded = false) {
   if (!race) return;
-  const previous = race.previous, net = race.net;
+  const session = race;
+  if (roomEnded && session.ownsSeat) DuelRecovery.drop(session.key);
+  else saveRace();
   race = null;
-  if (net) net.close();
-  if (new URLSearchParams(location.hash.slice(1)).has('duel')) {
+  session.net?.suspend();
+  session.release?.();
+  session.lockAbort?.abort();
+  const invite = new URLSearchParams(location.hash.slice(1)).get('duel');
+  if (invite !== null && (invite === session.roomId || invite === session.auth?.roomId)) {
     history.replaceState(null, '', location.pathname + location.search);
   }
-  game = previous;
+  game = session.previous;
   $('message').textContent = '';
+  $('race-storage-warning').hidden = true;
+  updateLinkStatus();
+  refreshResumeButton();
   render(); resume();
 }
 
 function askLeaveRace() {
-  if (game.phase === 'finished' || game.phase === 'interrupted') { leaveRace(); return; }
-  dialog('Выйти из дуэли?', '<p>Связь с соперником закроется. Вы вернётесь к своей сохранённой партии.</p><button id="confirm-leave" class="primary">Выйти из дуэли</button>');
-  $('confirm-leave').onclick = () => { $('modal').close(); leaveRace(); };
+  if (!race.ownsSeat || ['finished','interrupted'].includes(game.phase)) { leaveRace(false); return; }
+  const session = race;
+  dialog('Выйти из дуэли?', '<p>Место и ходы сохранятся в этом браузере. Секундомер продолжит идти.</p><button id="keep-duel" class="primary">Вернуться позже</button><button id="confirm-leave" class="lined end-duel">Завершить дуэль для обоих</button><p id="end-status" role="status"></p>');
+  $('keep-duel').onclick = () => { $('modal').close(); leaveRace(false); };
+  const end = $('confirm-leave');
+  end.disabled = !session.net?.token || session.ending;
+  if (session.ending) $('end-status').textContent = 'Ждём подтверждения сервера…';
+  end.onclick = async () => {
+    session.ending = true;
+    end.disabled = true;
+    $('end-status').textContent = 'Ждём подтверждения сервера…';
+    const ended = await session.net.endRoom();
+    session.ending = false;
+    if (race !== session) return;
+    if (ended) {
+      if ($('modal').open) $('modal').close();
+      leaveRace(true);
+    } else if ($('end-status')) {
+      $('end-status').textContent = 'Закрытие комнаты не подтверждено. Вы можете вернуться в неё позже.';
+      $('confirm-leave').disabled = !session.net?.token;
+    }
+  };
 }
 
+$('resume-duel').onclick = () => {
+  const record = DuelRecovery.find();
+  if (record) openRace(record.game.level, null, record);
+  else refreshResumeButton();
+};
+$('retry-duel').onclick = retryRace;
+window.addEventListener('online', retryRace);
+window.addEventListener('pagehide', () => {
+  if (!race) return;
+  saveRace();
+  race.net?.suspend();
+  race.ownsSeat = false;
+  race.release?.(); race.lockAbort?.abort();
+});
+window.addEventListener('pageshow', event => {
+  if (!event.persisted || !race) return;
+  if (['finished','interrupted'].includes(game.phase)) return;
+  race.net = null; race.finishInFlight = false; race.loading = false; race.levelPending = false;
+  acquireRaceSeat(race, !!race.auth);
+});
+window.addEventListener('storage', () => { if (!race) refreshResumeButton(); });
+window.addEventListener('hashchange', () => {
+  const room = new URLSearchParams(location.hash.slice(1)).get('duel');
+  if (!room || room === race?.roomId || room === race?.auth?.roomId) return;
+  const record = DuelRecovery.find(room);
+  if (race) leaveRace(false);
+  openRace(record?.game.level ?? game.level, room, record);
+});
 const invitation = new URLSearchParams(location.hash.slice(1)).get('duel');
-if (invitation !== null) openRace(game.level, invitation || 'invalid');
+const savedRace = DuelRecovery.find(invitation ?? undefined);
+if (savedRace || invitation !== null) openRace(savedRace?.game.level ?? game.level, invitation ?? null, savedRace);
+else refreshResumeButton();
