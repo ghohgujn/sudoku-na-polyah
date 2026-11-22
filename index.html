@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#eeece5"><meta name="description" content="Бумажное судоку с ручными пометками, общим листом и дуэлью для двоих."><title>Судоку на полях</title>
+<style>
+/* Hallmark | app screen | editorial paper | signature: writable puzzle sheet */
+/* Review: separate the printed grid, handwritten entries and desk controls by material and scale. */
+:root{--desk:#eeece5;--paper:#fffdf6;--ink:#272923;--sub:#626257;--faint:#c6c4b7;--edge:#a5a498;--accent:#993b28;--accent-dark:#792b1d;--wash:#f8e9d8;--pencil:#245979;--green:#366451;--shadow:#36342028;--lines:#dbd7c8;--rule:#bd685c7a;--grain:#5e564510;--white:#fffdf9;--veil:#27292366;--serif:Georgia,'Times New Roman',serif;--body:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif}
+*{box-sizing:border-box}
+html,body{overflow-x:clip}
+body{min-height:100dvh;margin:0;background-color:var(--desk);background-image:radial-gradient(var(--grain) .65px,transparent .75px);background-size:3px 3px;color:var(--ink);font:16px/1.45 var(--body)}
+button,a{color:inherit;font:inherit}
+button{cursor:pointer;background:none;border:0}
+button:disabled{cursor:default;color:var(--sub);background:var(--desk);border-color:var(--edge)}
+button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid var(--pencil);outline-offset:2px}
+button:active:not(:disabled){transform:translateY(1px)}
+button:hover:not(:disabled),a:hover{color:var(--accent)}
+h1,h2,h3,p{margin:0}
+h1,h2,h3{text-wrap:balance;font-family:var(--serif);font-weight:400;overflow-wrap:break-word;min-width:0}
+.wrap{max-width:1090px;margin:auto;padding:0 36px}
+.mast{height:76px;border-bottom:1px solid var(--edge);display:flex;align-items:center;justify-content:space-between}
+.brand,.nav,.utility,.tools,.row,.info,.byline{display:flex;align-items:center}
+.brand{gap:8px;font:italic 26px var(--serif)}
+.mark{width:24px;height:24px;background:repeating-linear-gradient(90deg,transparent 0 6px,var(--accent) 6px 8px),repeating-linear-gradient(0deg,transparent 0 6px,var(--accent) 6px 8px);border:2px solid var(--accent);transform:rotate(-6deg)}
+.nav{gap:16px}
+.utility{gap:8px;font-size:.91rem;min-height:44px}
+.icon{width:19px;height:19px;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:1.65;flex:none}
+.intro{display:flex;align-items:end;justify-content:space-between;padding:24px 0 16px}
+.intro h1{font-size:clamp(54px,6vw,84px);line-height:1;letter-spacing:-.065em}
+.new{border:1px solid var(--ink);border-radius:3px;padding:0 16px;gap:8px}
+.new:hover{background:var(--paper)}
+.desk{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(245px,.85fr);gap:clamp(32px,5vw,72px);align-items:start;padding:12px 0 32px}
+.sheet{background:var(--paper);position:relative;border:1px solid var(--faint);box-shadow:2px 3px 0 var(--desk),3px 4px 0 var(--faint),0 6px 12px var(--shadow);padding:16px clamp(20px,2.3vw,32px) 16px}
+.sheet:before{content:'';position:absolute;inset:0 auto 0 10px;width:3px;border-inline:1px solid var(--rule);pointer-events:none}
+.byline{justify-content:space-between;color:var(--sub);font:italic 15px var(--serif);margin:0 0 12px}
+.byline span:first-child{color:var(--accent)}
+.board{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));grid-template-rows:repeat(9,minmax(0,1fr));aspect-ratio:1;border:2px solid var(--ink);background:var(--paper);width:100%}
+.cell{position:relative;display:grid;place-items:center;padding:0;min-width:0;min-height:0;font:clamp(21px,2.65vw,41px)/1 var(--serif);border-radius:0;border-right:1px solid var(--edge);border-bottom:1px solid var(--edge);user-select:none;-webkit-tap-highlight-color:transparent}
+.cell:nth-child(3n){border-right:2px solid var(--ink)}
+.cell:nth-child(9n){border-right:0}
+.cell:nth-child(n+19):nth-child(-n+27),.cell:nth-child(n+46):nth-child(-n+54){border-bottom:2px solid var(--ink)}
+.cell:nth-child(n+73){border-bottom:0}
+.cell:hover:not(:disabled){color:inherit}
+.cell.selected,.cell:focus-visible{outline:2px solid var(--accent);outline-offset:-3px;background:var(--wash);z-index:1}
+.cell.entered{font-style:italic;color:var(--pencil)}
+.cell.partner{color:var(--green)}
+.cell.entered:hover{color:var(--pencil)}
+.notes{position:absolute;inset:3px;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);font:clamp(7px,.83vw,12px)/1 var(--body);color:var(--sub)}
+.notes span{place-self:center}
+.sheetfoot{margin-top:12px;display:flex;justify-content:space-between;align-items:center;font:italic 15px var(--serif);color:var(--sub)}
+.clock{font:14px var(--body);font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:8px}
+.clock .icon{width:15px}
+.side{padding:8px 0 0}
+.side h2{font-size:clamp(27px,2.7vw,36px);letter-spacing:-.04em}
+.info{justify-content:space-between;border-bottom:1px solid var(--edge);padding-bottom:12px}
+.tools{justify-content:space-between;gap:4px;margin:12px 0 16px}
+.tool{display:flex;align-items:center;flex-direction:column;justify-content:center;gap:8px;padding:8px 4px;flex:1;min-height:57px;font-size:.82rem;border-radius:3px}
+.tool .icon{width:21px;height:21px}
+.tool:hover,.tool[aria-pressed=true]{background:var(--wash);color:var(--accent)}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.pad button{font:31px var(--serif);height:clamp(48px,4.4vw,62px);background:var(--paper);border:1px solid var(--faint);border-radius:3px;box-shadow:0 2px 0 var(--lines)}
+.pad button:hover{border-color:var(--accent)}
+.primary{background:var(--accent);color:var(--white);border-radius:3px;min-height:46px;padding:8px 16px}
+.primary:hover:not(:disabled){background:var(--accent-dark);color:var(--white)}
+.check{width:100%;margin-top:16px}
+.help{font-size:.88rem;line-height:1.5;color:var(--sub);margin-top:8px}
+.modeinfo{border-block:1px solid var(--edge);margin-top:24px;padding:16px 0}
+.modeinfo h3{font-size:22px}
+.modeinfo p{margin-top:4px;font-size:.9rem;color:var(--sub)}
+.lined{border:1px solid var(--edge);min-height:44px;padding:8px 16px;border-radius:3px}
+.modeinfo button{margin-top:8px}
+.foot{border-top:1px solid var(--edge);padding:16px 0 24px;display:flex;justify-content:space-between;color:var(--sub);font-size:.85rem}
+.foot a{text-underline-offset:4px}
+.message{color:var(--accent);font-size:.9rem;margin-top:8px}
+.message:empty{display:none}
+dialog{border:1px solid var(--ink);border-radius:3px;background:var(--paper);color:var(--ink);width:min(440px,calc(100% - 32px));padding:24px;max-height:90dvh;box-shadow:4px 5px 0 var(--shadow)}
+dialog::backdrop{background:var(--veil)}
+.row{justify-content:space-between;gap:12px}
+dialog h2{font-size:31px;letter-spacing:-.035em}
+.close{font-size:26px;min-width:44px;height:44px}
+dialog p{margin:12px 0;color:var(--sub)}
+dialog label{display:block;margin:16px 0 4px}
+select{width:100%;padding:8px;background:var(--paper);color:var(--ink);font:inherit;border:1px solid var(--edge);border-radius:3px;min-height:44px}
+dialog .primary{width:100%;margin-top:12px}
+.cover{aspect-ratio:1;border:2px solid var(--ink);display:grid;align-content:center;justify-items:center;text-align:center;padding:24px}
+.cover h2{font-size:34px}
+.cover p{margin:12px 0 20px}
+.sr{position:absolute;clip-path:inset(50%);width:1px;height:1px;overflow:hidden}
+[hidden]{display:none!important}
+#prints{display:none}
+@media(min-width:1200px){.desk{grid-template-columns:565px 310px;justify-content:space-between;gap:44px}
+}
+@media(max-width:720px){.wrap{padding-inline:16px;max-width:570px}
+.mast{height:58px}
+.brand{font-size:22px}
+.nav{gap:8px}
+.nav .utility{font-size:13px}
+.intro{padding:16px 0 12px}
+.intro h1{font-size:52px}
+.new{font-size:14px}
+.desk{display:flex;flex-direction:column;gap:16px;padding:4px 0 20px}
+.sheet,.side{width:100%}
+.sheet{padding:12px 12px 8px 16px}
+.sheet:before{left:6px}
+.cell{font-size:clamp(20px,5.6vw,32px)}
+.notes{inset:1px;font-size:clamp(7px,1.9vw,10px)}
+.byline{margin-bottom:8px;font-size:14px}
+.side{display:flex;flex-direction:column;padding:0}
+.info{display:none}
+.pad{order:-1;grid-template-columns:repeat(9,minmax(0,1fr));gap:4px}
+.pad button{height:45px;font-size:23px}
+.tools{margin:8px 0 0}
+.tool{flex-direction:row;gap:8px;min-height:44px}
+.check{margin-top:8px}
+.modeinfo{margin-top:16px}
+.sheetfoot{margin-top:8px}
+.foot{gap:16px;flex-wrap:wrap}
+}
+@media print{@page{size:A4 portrait;margin:18mm}
+body{background:var(--white)}
+.wrap,dialog{display:none!important}
+#prints{display:block}
+.printsheet{break-after:page}
+.printsheet:last-child{break-after:auto}
+.printsheet h1{font-size:36pt}
+.printsheet p{margin:4mm 0}
+.printsheet .board{width:167mm;height:167mm}
+.printsheet .cell{font-size:21pt}
+.printsheet footer{margin-top:12mm}
+}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}
+}
+</style></head><body>
+<div class="wrap"><header class="mast"><div class="brand"><b class="mark" aria-hidden="true"></b>На полях</div><nav class="nav"><button class="utility" id="rules"><i data-i="book"></i>Правила</button><button class="utility" id="print"><i data-i="print"></i>Печать</button></nav></header>
+<main><div class="intro"><h1>Судоку</h1><button class="utility new" id="new"><i data-i="plus"></i>Новая партия</button></div>
+<div class="desk"><section class="sheet" aria-label="Игровой лист"><div class="byline"><span id="folio"></span><span id="difficulty"></span></div><div id="board" class="board" role="group" aria-label="Поле судоку"></div><div class="cover" id="cover" hidden></div><div class="sheetfoot"><span id="sheetmode"></span><span class="clock"><i data-i="clock"></i><span id="time">00:00</span></span></div></section>
+<aside class="side"><div class="info"><h2>Инструменты</h2><i data-i="pen"></i></div>
+<div class="tools"><button class="tool" id="note" aria-pressed="false"><i data-i="pen"></i>Пометки</button><button class="tool" id="erase"><i data-i="erase"></i>Ластик</button><button class="tool" id="undo"><i data-i="undo"></i>Отмена</button></div>
+<div class="pad" id="pad" aria-label="Ввод цифр"></div><button class="primary check" id="check">Проверить лист</button><div class="message" id="message" role="status"></div><p class="help">Выберите клетку и впишите цифру. Для карандашных записей включите пометки.</p>
+<div class="modeinfo"><h3 id="modetitle"></h3><p id="modedesc"></p><button id="pairgame" class="lined" hidden>Играть вдвоём</button><button id="pass" class="lined" hidden>Передать карандаш</button></div></aside></div></main><footer class="foot"><span>Судоку на полях</span><a href="duel.pdf" download>Листы для дуэли в PDF</a></footer></div>
+<dialog id="modal"><div class="row"><h2 id="dialogtitle"></h2><button class="close" aria-label="Закрыть">×</button></div><div id="dialogbody"></div></dialog><div id="prints"></div><noscript>Для игры включите JavaScript. <a href="duel.pdf">Распечатать судоку</a></noscript>
+<script>
+const BANK = [["004008360000070001000360078010406937000082006060007002090800005302095614407000000", "014580037059341060000070500000035120600410003000008650070200406030000298100000000", "060034000470210603000900045690002430000400100384000009008509010030021000500048070", "302000607007902005084060900000056400000310008600207000009120706700493000000670590", "000003000894500060730802910000040020527900400146200070900700300200080607000006590", "002090000000000219940000057097001038300006042406700005600457900009130000014060003", "900006150054010793001000060080102300100004509390060801840005000020000000513020004", "280190006510007000030020000006589070000000090073012050000200063420076900300048017", "068030070430057600105980230090002060612000007000060002000001000040008001781605009", "061003020300407008847020305109562730030000010020304000000706801605000000000030070", "370801000002003400800004021040000050003018000081400273000205600020630845000089030", "000010200010276058405380700030002004081607509004100000009453682046020000000000000"], ["004008360000000000000360078010400930000082000060007000090000000300005614407000000", "302000607007902000084000900000056400000300008600200000009100700000403000000070590", "900006050054010703001000060080002000100004509300000801840005000020000000503020000", "008030070430000600105080230090002060610000007000000000000001000040008001780605009", "040010007007309040000060030000090300200506000006000009010002705070000600900001800", "060000020300007008840020300109500730030000010020004000000700801005000000000030070", "000010000010276008405080700030002004001607509000100000000003682046000000000000000", "400008030200007009070000060002000000809352600600090000900030000000200000000040751", "000780000508090200700001000094030005600100000005000107200040050000009820003000000", "649500207700004010000030000804000720090008001000006000280600000000103000403002600", "007001040000000060006000007010040000700000230903570000040009120800000000030050400", "006000010820500003709020000010050000600000200000031080300090000000062050000008039"], ["060004000400200003000900005690000030000400100384000009008500010030021000500000070", "280100006510007000000020000006509070000000090070012050000200000400076000300048017", "080000000006285001501003090245000076000100000009000005004879000008001000300000000", "190000503500960000700400020800000067000100000000500400201000000089000005000007900", "700310820400700030000002040040000083000000009059070000015093000000000000030040200", "060890010000500230000031090920000000030070000006980002004000600008056000000000100", "900000003450008106030090400000045000090301600008900030000000975000000200060700004", "520000000000004001010000902906301400000400003000208100093050070000000000040003090", "006000702000900003003160080020040900040000006000008000000300004001000600902017000", "500000023000004100807600005600400809001000000000008600790000000000100060002093000", "007005020020001006090086001075040300900060000401000000000700050000008010050003600", "400000300009000007087020600090000016008000030064009000000008000000390240010005009"]];
+const $ = id => document.getElementById(id);
+const levels = ['Средний', 'Сложный', 'Эксперт'];
+const modes = {solo:'Соло', pair:'Вместе', duel:'Дуэль'};
+const descriptions = {
+  solo:'Для двоих есть общий лист и дуэль на время.',
+  pair:'Общий лист и два цвета чернил. Передавайте карандаш, когда захотите сменить ход.',
+  duel:'Два игрока по очереди решают одну задачу. Выигрывает тот, кто верно заполнит её быстрее.'
+};
+const paths = {
+ book:'M3 5q5-2 9 1 4-3 9-1v14q-5-2-9 1-4-3-9-1z M12 6v14',
+ print:'M6 8V3h12v5 M6 17H3v-7h18v7h-3 M6 14h12v7H6z M17 12h1',
+ plus:'M12 5v14 M5 12h14',clock:'M12 3a9 9 0 1 0 .01 0 M12 6v6l4 2',
+ pen:'M4 20l1-5L16 4a2 2 0 0 1 3 3L8 18z M14 6l4 4',
+ erase:'M3 14l10-10a1 1 0 0 1 2 0l5 5a1 1 0 0 1 0 2l-8 8H8z M7 10l7 7 M12 19h9',
+ undo:'M9 5L3 11l6 5 M4 11h10a6 6 0 0 1 6 6v2'
+};
+for (const el of document.querySelectorAll('[data-i]')) {
+  el.outerHTML='<svg aria-hidden="true" class="icon" viewBox="0 0 24 24"><path d="'+paths[el.dataset.i]+'"/></svg>';
+}
+function shuffled(values) {
+  const a=values.slice();
+  for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}
+  return a;
+}
+function newPuzzle(level) {
+  const bank=BANK[level], seed=bank[Math.floor(Math.random()*bank.length)];
+  const digits=[0,...shuffled([1,2,3,4,5,6,7,8,9])];
+  const order=()=>shuffled([0,1,2]).flatMap(group=>shuffled([0,1,2]).map(n=>group*3+n));
+  const rows=order(),cols=order(),transpose=Math.random()<.5;
+  return rows.flatMap(r=>cols.map(c=>digits[+seed[transpose?c*9+r:r*9+c]]));
+}
+function emptyBoard(){return {values:Array(81).fill(0),notes:Array(81).fill(0),owners:Array(81).fill(0),history:[]}}
+function startGame(mode,level,number) {
+  return {mode,level,number,puzzle:newPuzzle(level),boards:[emptyBoard(),emptyBoard()],player:0,
+    phase:mode==='duel'?'ready':'play',times:[0,0],selected:-1,note:false};
+}
+const saveKey='na-polyah-sudoku.v1';
+function loadGame() {
+  try{
+    const g=JSON.parse(localStorage.getItem(saveKey));
+    if(g&&Object.hasOwn(modes,g.mode)&&levels[g.level]&&g.puzzle?.length===81&&
+      g.boards?.every(b=>b.values.length===81&&b.notes.length===81&&b.owners.length===81&&Array.isArray(b.history))&&g.boards.length===2)return g;
+  }catch{}
+  return startGame('solo',1,1);
+}
+let game=loadGame(), tickStart=null, storageFailed=false;
+const activeIndex=()=>game.mode==='duel'?game.player:0;
+const activeBoard=()=>game.boards[activeIndex()];
+function persist(){
+  try{localStorage.setItem(saveKey,JSON.stringify(game))}
+  catch{if(!storageFailed){storageFailed=true;$('message').textContent='Браузер не сохранил партию. Оставьте вкладку открытой.'}}
+}
+function settle(){
+  if(tickStart!==null){game.times[activeIndex()]+=performance.now()-tickStart;tickStart=null}
+}
+function resume(){
+  if(tickStart===null&&!document.hidden&&game.phase==='play'&&!$('modal').open)tickStart=performance.now();
+}
+function formatTime(ms){
+  const s=Math.floor(ms/1000);
+  return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
+}
+function clock(){const current=game.times[activeIndex()]+(tickStart===null?0:performance.now()-tickStart);$('time').textContent=formatTime(current)}
+setInterval(clock,500);
+setInterval(()=>{settle();persist();resume()},5000);
+document.addEventListener('visibilitychange',()=>{settle();persist();resume()});
+window.addEventListener('pagehide',()=>{settle();persist()});
+window.addEventListener('pageshow',resume);
+const cells=[];
+for(let i=0;i<81;i++){
+  const cell=document.createElement('button');
+  cell.addEventListener('focus',()=>{if(game.phase==='play'&&game.selected!==i){game.selected=i;drawCells()}});
+  cell.className='cell';cell.addEventListener('click',()=>selectCell(i));
+  $('board').append(cell);cells.push(cell);
+}
+for(let d=1;d<=9;d++){
+  const button=document.createElement('button');button.textContent=d;
+  button.setAttribute('aria-label','Вписать '+d);button.onclick=()=>edit(d);
+  $('pad').append(button);
+}
+function selectCell(i){
+  if(game.phase!=='play')return;
+  game.selected=i;$('message').textContent='';drawCells();cells[i].focus({preventScroll:true});persist();
+}
+function drawCells(){
+  const b=activeBoard();
+  cells.forEach((cell,i)=>{
+    const given=game.puzzle[i],value=given||b.values[i],bits=b.notes[i],selected=i===game.selected;
+    cell.tabIndex=(selected||(game.selected===-1&&i===0))?0:-1;
+    cell.className='cell'+(selected?' selected':'')+(!given&&value?' entered':'')+(b.owners[i]===1?' partner':'');
+    cell.textContent=value||'';
+    const notes=[];
+    if(!value&&bits){
+      const grid=document.createElement('span');grid.className='notes';
+      for(let d=1;d<=9;d++){const span=document.createElement('span');if(bits&(1<<d)){span.textContent=d;notes.push(d)}grid.append(span)}
+      cell.append(grid);
+    }
+    cell.setAttribute('aria-label','Строка '+(Math.floor(i/9)+1)+', столбец '+(i%9+1)+'. '+(given?'Дано '+given:value?'Вписано '+value:notes.length?'Пометки '+notes.join(', '):'Пусто'));
+  });
+}
+function render(){
+  $('folio').textContent='Лист № '+String(game.number).padStart(3,'0');
+  $('difficulty').textContent=levels[game.level];
+  $('sheetmode').textContent=game.mode==='solo'?'Одиночная партия':modes[game.mode]+' / Игрок '+(game.player+1);
+  $('modetitle').textContent={solo:'Одиночная партия',pair:'Общий лист',duel:'Дуэль на время'}[game.mode];
+  $('pairgame').hidden=game.mode!=='solo';
+  $('modedesc').textContent=descriptions[game.mode];$('pass').hidden=game.mode!=='pair'||game.phase!=='play';
+  $('note').setAttribute('aria-pressed',String(game.note));
+  const playable=game.phase==='play';
+  for(const el of [...$('pad').children,$('note'),$('erase'),$('check')])el.disabled=!playable;
+  $('undo').disabled=!playable||!activeBoard().history.length;
+  $('board').hidden=!playable;$('cover').hidden=playable;
+  if(playable)drawCells();else renderCover();
+  clock();
+}
+function renderCover(){
+  const done=game.phase==='done',duel=game.mode==='duel';
+  const title=document.createElement('h2'),body=document.createElement('p'),btn=document.createElement('button');
+  btn.className='primary';
+  if(done){
+    let label=game.mode==='pair'?'Вы решили вместе!':'Лист решён!';
+    if(duel){
+      const [a,b]=game.times.map(t=>Math.floor(t/1000));label=a===b?'Ничья!':'Победил игрок '+(a<b?1:2);
+    }
+    title.textContent=label;body.textContent=duel?'Игрок 1 — '+formatTime(game.times[0])+'. Игрок 2 — '+formatTime(game.times[1])+'.':'Время решения — '+formatTime(game.times[0])+'.';
+    btn.textContent='Новая партия';btn.onclick=setup;
+  }else{
+    title.textContent='Игрок '+(game.player+1);
+    body.textContent=game.player?'Передайте устройство второму игроку.':'Второй игрок отворачивается. Начните, когда будете готовы.';
+    btn.textContent='Открыть мой лист';btn.onclick=()=>{game.phase='play';persist();render();resume()};
+  }
+  $('cover').replaceChildren(title,body,btn);
+}
+function edit(d,clear=false){
+  if(game.phase!=='play')return;
+  const i=game.selected,b=activeBoard();
+  if(i<0||game.puzzle[i]){$('message').textContent=i<0?'Сначала выберите клетку.':'Эта цифра напечатана на листе.';return}
+  const mark=game.note&&!clear;
+  if(mark&&b.values[i]){$('message').textContent='Для пометок сначала сотрите вписанную цифру.';return}
+  const nextValue=clear||mark?0:d,nextNotes=mark?b.notes[i]^(1<<d):0;
+  if(nextValue===b.values[i]&&nextNotes===b.notes[i])return;
+  b.history.push([i,b.values[i],b.notes[i],b.owners[i]]);
+  b.values[i]=nextValue;b.notes[i]=nextNotes;b.owners[i]=game.mode==='pair'?game.player:0;
+  $('message').textContent='';persist();render();
+}
+function undo(){
+  if(game.phase!=='play')return;
+  const b=activeBoard(),entry=b.history.pop();if(!entry)return;
+  const [i,v,n,o]=entry;b.values[i]=v;b.notes[i]=n;b.owners[i]=o;game.selected=i;
+  $('message').textContent='';persist();render();
+}
+$('undo').onclick=undo;$('erase').onclick=()=>edit(0,true);
+$('note').onclick=()=>{game.note=!game.note;persist();render()};
+$('pass').onclick=()=>{game.player=1-game.player;game.selected=-1;game.note=false;$('message').textContent='';persist();render()};
+function correct(values){
+  const unique=a=>new Set(a).size===9;
+  for(let k=0;k<9;k++){
+    const row=[],col=[],box=[];
+    for(let j=0;j<9;j++){
+      row.push(values[k*9+j]);col.push(values[j*9+k]);box.push(values[(Math.floor(k/3)*3+Math.floor(j/3))*9+k%3*3+j%3]);
+    }
+    if(!unique(row)||!unique(col)||!unique(box))return false;
+  }return true;
+}
+$('check').onclick=()=>{
+  const vals=game.puzzle.map((v,i)=>v||activeBoard().values[i]);
+  if(vals.includes(0)){$('message').textContent='Заполните весь лист перед проверкой.';return}
+  if(!correct(vals)){$('message').textContent='Лист пока не сходится. Можно продолжить решение.';return}
+  settle();game.selected=-1;game.note=false;$('message').textContent='';
+  if(game.mode==='duel'&&game.player===0){game.player=1;game.phase='ready'}else game.phase='done';
+  persist();render();
+};
+function dialog(title,html){
+  settle();persist();$('dialogtitle').textContent=title;$('modal').setAttribute('aria-labelledby','dialogtitle');
+  $('dialogbody').innerHTML=html;$('modal').showModal();
+}
+$('modal').querySelector('.close').onclick=()=>$('modal').close();
+$('modal').addEventListener('close',resume);
+function setup(){
+  dialog('Новая партия','<label for="mode">Как играем</label><select id="mode"></select><p id="choice"></p><label for="level">Сложность</label><select id="level"></select><p id="replace"></p><button class="primary" id="begin">Начать партию</button>');
+  for(const [id,name] of Object.entries(modes))$('mode').add(new Option(name,id));
+  levels.forEach((name,i)=>$('level').add(new Option(name,i)));
+  $('mode').value=game.mode;$('level').value=game.level;
+  $('mode').onchange=()=>$('choice').textContent=descriptions[$('mode').value];$('mode').onchange();
+  if(game.phase!=='done'&&(game.boards.some(b=>b.history.length)||game.mode==='duel'&&game.player===1))$('replace').textContent='Новая партия заменит текущий лист.';
+  $('begin').onclick=()=>{
+    game=startGame($('mode').value,Number($('level').value),game.number+1);
+    $('modal').close();$('message').textContent='';persist();render();resume();
+  };
+}
+$('new').onclick=setup;
+$('pairgame').onclick=()=>{setup();$('mode').value='pair';$('mode').onchange()};
+$('rules').onclick=()=>dialog('Правила','<p>В каждой строке, каждом столбце и квадрате 3 × 3 должны встретиться все цифры от 1 до 9 по одному разу.</p><p>Пометки ставятся и стираются вручную. Повторный ввод той же цифры убирает её из пометок. Кнопка «Проверить лист» оценивает только законченное решение.</p><p>С клавиатуры используйте стрелки и цифры. Delete стирает запись, M переключает пометки, Ctrl или ⌘ + Z отменяет ход.</p><p>Уровень и режим для двоих можно выбрать в меню «Новая партия».</p>');
+document.addEventListener('keydown',e=>{
+  if($('modal').open||game.phase!=='play'||e.altKey)return;
+  if((e.ctrlKey||e.metaKey)&&['z','я'].includes(e.key.toLowerCase())){e.preventDefault();undo();return}
+  if(e.ctrlKey||e.metaKey)return;
+  if(/^[1-9]$/.test(e.key)){e.preventDefault();edit(+e.key);return}
+  if(['m','ь'].includes(e.key.toLowerCase())){e.preventDefault();$('note').click();return}
+  if(e.key==='Backspace'||e.key==='Delete'){e.preventDefault();edit(0,true);return}
+  if(e.key.startsWith('Arrow')&&$('board').contains(document.activeElement)){
+    e.preventDefault();const i=Math.max(0,game.selected),r=Math.floor(i/9),c=i%9;
+    const offsets={ArrowLeft:[0,-1],ArrowRight:[0,1],ArrowUp:[-1,0],ArrowDown:[1,0]};
+    const [dr,dc]=offsets[e.key];const clamp=x=>Math.max(0,Math.min(8,x));
+    selectCell(clamp(r+dr)*9+clamp(c+dc));
+  }
+});
+function printSheets(){
+  const pages=[];
+  for(let p=0;p<(game.mode==='duel'?2:1);p++){
+    const page=document.createElement('section');page.className='printsheet';
+    const title=document.createElement('h1');title.textContent='Судоку на полях';
+    const meta=document.createElement('p');meta.textContent=$('folio').textContent+' / '+levels[game.level]+' / '+(game.mode==='duel'?'Игрок '+(p+1):modes[game.mode]);
+    const board=document.createElement('div');board.className='board';
+    for(const d of game.puzzle){const cell=document.createElement('div');cell.className='cell';cell.textContent=d||'';board.append(cell)}
+    const foot=document.createElement('footer');foot.textContent='Имя ____________________　　　 Время ______________';
+    page.append(title,meta,board,foot);pages.push(page);
+  }$('prints').replaceChildren(...pages);
+}
+window.addEventListener('beforeprint',printSheets);
+$('print').onclick=()=>{printSheets();window.print()};
+render();resume();persist();
+</script></body></html>
