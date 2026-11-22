@@ -95,6 +95,9 @@ dialog .primary{width:100%;margin-top:12px}
 .cover p{overflow-wrap:anywhere}
 .cover input{width:min(100%,320px);min-height:44px;padding:8px;border:1px solid var(--edge);background:var(--paper);color:var(--ink);font:14px var(--body)}
 .invite-actions{display:flex;justify-content:center;flex-wrap:wrap;gap:8px;margin-top:12px}
+.race-levels{width:min(100%,272px);margin:0 0 16px;text-align:left}
+.race-levels label{display:block;margin-bottom:4px}
+.race-levels small{display:block;margin-top:6px;color:var(--sub);font-size:.88rem}
 #countdown{font:54px var(--serif);color:var(--accent)}
 .cover h2{font-size:34px}
 .cover p{margin:12px 0 20px}
@@ -170,6 +173,7 @@ body{background:var(--white)}
 <div class="pad" id="pad" aria-label="Ввод цифр"></div><button class="primary check" id="check">Проверить лист</button><div class="message" id="message" role="status"></div><p class="help">Выберите клетку и впишите цифру. Для карандашных записей включите пометки.</p>
 <div class="modeinfo"><h3 id="modetitle"></h3><p id="modedesc"></p><button id="pairgame" class="lined" hidden>Играть вдвоём</button><button id="onlinegame" class="lined">Дуэль по ссылке</button><button id="pass" class="lined" hidden>Передать карандаш</button></div></aside></div></main><footer class="foot"><span>Судоку на полях</span><a href="duel.pdf" download>Листы для дуэли в PDF</a></footer></div>
 <dialog id="modal"><div class="row"><h2 id="dialogtitle"></h2><button class="close" aria-label="Закрыть">×</button></div><div id="dialogbody"></div></dialog><div id="prints"></div><noscript>Для игры включите JavaScript. <a href="duel.pdf">Распечатать судоку</a></noscript>
+<script src="duel-puzzles.js"></script>
 <script>
 const BANK = [
   [
@@ -254,10 +258,10 @@ const levelDetails = [
 ];
 const modes = {solo:'Соло', pair:'Вместе', duel:'Дуэль на одном экране', online:'Дуэль по ссылке'};
 const descriptions = {
-  online:'Оба играют на своих устройствах. Победит тот, кто первым нажмёт «Проверить лист» с верным решением.',
+  online:'Каждый выбирает свой уровень до старта. На лёгком листе открыто больше цифр. Побеждает первый, кто сдаст верное решение.',
   solo:'Решайте вместе на одном экране или соревнуйтесь по ссылке.',
   pair:'Общий лист и два цвета чернил. Передавайте карандаш, когда захотите сменить ход.',
-  duel:'Два игрока по очереди решают одну задачу. Выигрывает тот, кто верно заполнит её быстрее.'
+  duel:'Выберите уровень для каждого и решайте по очереди. У обоих одно решение. Побеждает тот, кто заполнит свой лист быстрее.'
 };
 const paths = {
  book:'M3 5q5-2 9 1 4-3 9-1v14q-5-2-9 1-4-3-9-1z M12 6v14',
@@ -284,8 +288,13 @@ function newPuzzle(level) {
   return rows.flatMap(r=>cols.map(c=>digits[+seed[transpose?c*9+r:r*9+c]]));
 }
 function emptyBoard(){return {values:Array(81).fill(0),notes:Array(81).fill(0),owners:Array(81).fill(0),history:[]}}
-function startGame(mode,level,number) {
-  return {mode,level,number,puzzle:newPuzzle(level),boards:[emptyBoard(),emptyBoard()],player:0,
+function startGame(mode,level,number,secondLevel=level) {
+  let duel;
+  if(mode==='duel'){
+    const {sheets}=makeDuelSheets();
+    duel={duelLevels:[level,secondLevel],duelSheets:[sheets[level],sheets[secondLevel]]};
+  }
+  return {mode,level,number,...duel,puzzle:duel?duel.duelSheets[0]:newPuzzle(level),boards:[emptyBoard(),emptyBoard()],player:0,
     phase:mode==='duel'?'ready':'play',times:[0,0],selected:-1,note:false};
 }
 const saveKey='na-polyah-sudoku.v2';
@@ -447,7 +456,10 @@ $('check').onclick=()=>{
     return;
   }
   settle();game.selected=-1;game.note=false;$('message').textContent='';
-  if(game.mode==='duel'&&game.player===0){game.player=1;game.phase='ready'}else game.phase='done';
+  if(game.mode==='duel'&&game.player===0){
+    game.player=1;game.phase='ready';
+    if(game.duelSheets){game.level=game.duelLevels[1];game.puzzle=game.duelSheets[1]}
+  }else game.phase='done';
   persist();render();
 };
 function dialog(title,html){
@@ -457,12 +469,19 @@ function dialog(title,html){
 $('modal').querySelector('.close').onclick=()=>$('modal').close();
 $('modal').addEventListener('close',resume);
 function setup(){
-  dialog('Новая партия','<label for="mode">Как играем</label><select id="mode"></select><p id="choice"></p><label for="level">Сложность</label><select id="level"></select><p id="replace"></p><button class="primary" id="begin">Начать партию</button>');
+  dialog('Новая партия','<label for="mode">Как играем</label><select id="mode"></select><p id="choice"></p><label id="level-label" for="level">Сложность</label><select id="level"></select><div id="duel-level-row" hidden><label for="second-level">Уровень игрока 2</label><select id="second-level"><option value="">Как у игрока 1</option></select></div><p id="replace"></p><button class="primary" id="begin">Начать партию</button>');
   for(const [id,name] of Object.entries(modes))$('mode').add(new Option(name,id));
-  levels.forEach((name,i)=>$('level').add(new Option(name,i)));
-  $('mode').value=game.mode;$('level').value=game.level;
+  levels.forEach((name,i)=>{
+    $('level').add(new Option(name,i));
+    $('second-level').add(new Option(name,i));
+  });
+  $('mode').value=game.mode;$('level').value=game.duelLevels?.[0]??game.level;
+  if(game.duelLevels && game.duelLevels[0]!==game.duelLevels[1])$('second-level').value=game.duelLevels[1];
   const warn=()=>{$('replace').textContent=$('mode').value==='online'?'Текущая партия сохранится на этом устройстве.':replacementNotice()};
   $('mode').onchange=()=>{
+    const mode=$('mode').value;
+    $('duel-level-row').hidden=mode!=='duel';
+    $('level-label').textContent=mode==='duel'?'Уровень игрока 1':mode==='online'?'Мой уровень':'Сложность';
     $('choice').textContent=descriptions[$('mode').value];
     $('begin').textContent=$('mode').value==='online'?'Создать приглашение':'Начать партию';
     warn();
@@ -471,17 +490,18 @@ function setup(){
   $('begin').onclick=()=>{
     const mode=$('mode').value,level=Number($('level').value);
     if(mode==='online'){$('modal').close();openRace(level);return}
-    newLocalSheet(mode,level);
+    newLocalSheet(mode,level,$('second-level').value===''?level:Number($('second-level').value));
   };
 }
 function replacementNotice(){
   return game.phase!=='done'&&(game.boards.some(b=>b.history.length)||game.mode==='duel'&&game.player===1)?'Новый лист заменит текущую партию.':'';
 }
-function newLocalSheet(mode,level){
-  game=startGame(mode,level,game.number+1);
+function newLocalSheet(mode,level,secondLevel=level){
+  game=startGame(mode,level,game.number+1,secondLevel);
   $('modal').close();$('message').textContent='';persist();render();resume();
 }
 $('difficulty').onclick=()=>{
+  if(game.mode==='duel'){setup();$('level').focus();return}
   dialog('Выберите сложность','<fieldset id="level" class="level-list"><legend class="sr">Сложность нового листа</legend></fieldset><p id="replace"></p><button class="primary" id="begin">Начать новый лист</button>');
   levels.forEach((name,i)=>{
     const item=document.createElement('label');
@@ -495,7 +515,7 @@ $('difficulty').onclick=()=>{
 $('new').onclick=()=>game.mode==='online'?askLeaveRace():setup();
 $('onlinegame').onclick=()=>{setup();$('mode').value='online';$('mode').onchange()};
 $('pairgame').onclick=()=>{setup();$('mode').value='pair';$('mode').onchange()};
-$('rules').onclick=()=>dialog('Правила','<p>В каждой строке, каждом столбце и квадрате 3 × 3 должны встретиться все цифры от 1 до 9 по одному разу.</p><p>Пометки ставятся и стираются вручную. Повторный ввод той же цифры убирает её из пометок. Кнопка «Проверить лист» оценивает только законченное решение.</p><p>С клавиатуры используйте стрелки и цифры. Delete стирает запись, M переключает пометки, Ctrl или ⌘ + Z отменяет ход.</p><p>Сложность выбирается над полем. Для игры на двух устройствах выберите «Дуэль по ссылке» и нажмите «Готов» каждый на своём экране.</p>');
+$('rules').onclick=()=>dialog('Правила','<p>В каждой строке, каждом столбце и квадрате 3 × 3 должны встретиться все цифры от 1 до 9 по одному разу.</p><p>Пометки ставятся и стираются вручную. Повторный ввод той же цифры убирает её из пометок. Кнопка «Проверить лист» оценивает только законченное решение.</p><p>С клавиатуры используйте стрелки и цифры. Delete стирает запись, M переключает пометки, Ctrl или ⌘ + Z отменяет ход.</p><p>Сложность выбирается над полем. Для игры на двух устройствах выберите «Дуэль по ссылке». В комнате каждый выбирает свой уровень и нажимает «Готов». При одинаковом уровне стартовые поля совпадают.</p>');
 document.addEventListener('keydown',e=>{
   if($('modal').open||game.phase!=='play'||e.altKey)return;
   if((e.ctrlKey||e.metaKey)&&['z','я'].includes(e.key.toLowerCase())){e.preventDefault();undo();return}
@@ -516,9 +536,9 @@ function printSheets(){
   for(let p=0;p<(game.mode==='duel'?2:1);p++){
     const page=document.createElement('section');page.className='printsheet';
     const title=document.createElement('h1');title.textContent='Судоку на полях';
-    const meta=document.createElement('p');meta.textContent=$('folio').textContent+' / '+levels[game.level]+' / '+(game.mode==='duel'?'Игрок '+(p+1):modes[game.mode]);
+    const meta=document.createElement('p');meta.textContent=$('folio').textContent+' / '+levels[game.duelLevels?.[p]??game.level]+' / '+(game.mode==='duel'?'Игрок '+(p+1):modes[game.mode]);
     const board=document.createElement('div');board.className='board';
-    for(const d of game.puzzle){const cell=document.createElement('div');cell.className='cell';cell.textContent=d||'';board.append(cell)}
+    for(const d of game.duelSheets?.[p]??game.puzzle){const cell=document.createElement('div');cell.className='cell';cell.textContent=d||'';board.append(cell)}
     const foot=document.createElement('footer');foot.textContent='Имя ____________________　　　 Время ______________';
     page.append(title,meta,board,foot);pages.push(page);
   }$('prints').replaceChildren(...pages);
@@ -528,4 +548,4 @@ $('print').onclick=()=>{printSheets();window.print()};
 let race=null;
 render();resume();persist();
 </script>
-<script src="race-ui.js"></script></body></html>
+<script src="race-ui.js?v=2"></script></body></html>

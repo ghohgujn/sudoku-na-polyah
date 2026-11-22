@@ -9,7 +9,7 @@ function loadDuelTransport() {
       script.onerror = () => reject(new Error('Не удалось загрузить сетевой режим. Проверьте интернет и попробуйте ещё раз.'));
       document.head.append(script);
     });
-    transportLoading = loadScript('duel-network.js')
+    transportLoading = loadScript('duel-network.js?v=2')
       .catch(error => { transportLoading = null; throw error; });
   }
   return transportLoading;
@@ -38,8 +38,9 @@ async function openRace(level, roomId) {
     });
     if (roomId) await session.net.join(roomId);
     else {
-      game.puzzle = newPuzzle(level);
-      await session.net.host({level, puzzle: game.puzzle});
+      const {sheets} = makeDuelSheets();
+      game.puzzle = sheets[level];
+      await session.net.host({level, puzzle: game.puzzle, sheets});
     }
   } catch (error) {
     if (race === session) handleRaceEvent('error', {message: error.message});
@@ -58,6 +59,13 @@ function handleRaceEvent(type, data = {}) {
       game.level = data.level;
       game.puzzle = data.puzzle.slice();
       break;
+    case 'levels':
+      game.level = data.level;
+      game.puzzle = data.puzzle.slice();
+      race.canChooseLevel = data.canChooseLevel;
+      race.hostLevel = data.hostLevel;
+      race.guestLevel = data.guestLevel;
+      break;
     case 'ready':
       race.selfReady = data.self;
       race.otherReady = data.other;
@@ -68,7 +76,7 @@ function handleRaceEvent(type, data = {}) {
       game.phase = type === 'start' ? 'play' : 'countdown';
       break;
     case 'rejected':
-      race.submitted = false;
+      if (data.action === 'finish') race.submitted = false;
       $('message').textContent = data.message || 'Сервер не принял решение. Можно продолжить игру.';
       break;
     case 'result':
@@ -92,6 +100,37 @@ function raceButton(text, id, action, className = 'primary') {
   btn.type = 'button'; btn.textContent = text; btn.id = id; btn.className = className;
   btn.onclick = action;
   return btn;
+}
+
+function showRaceLevels(cover) {
+  const group = document.createElement('div');
+  group.className = 'race-levels';
+  const label = document.createElement('label');
+  label.htmlFor = 'race-level';
+  label.textContent = 'Мой уровень';
+  const select = document.createElement('select');
+  select.id = 'race-level';
+  levels.forEach((name, index) => select.add(new Option(name, index)));
+  select.value = game.level;
+  select.disabled = !race.canChooseLevel || race.selfReady || race.levelPending;
+  select.onchange = async () => {
+    const session = race;
+    const chosen = Number(select.value);
+    session.levelPending = true;
+    select.disabled = true;
+    $('ready-duel').disabled = true;
+    try { await session.net.chooseLevel(chosen); }
+    finally {
+      session.levelPending = false;
+      if (race === session && game.phase === 'lobby') render();
+    }
+  };
+  const opponent = document.createElement('small');
+  opponent.id = 'opponent-level';
+  const otherLevel = race.role === 'host' ? race.guestLevel : race.hostLevel;
+  opponent.textContent = 'У соперника — ' + levels[otherLevel ?? game.level];
+  group.append(label, select, opponent);
+  cover.append(group);
 }
 
 function renderRaceCover() {
@@ -149,8 +188,9 @@ function renderRaceCover() {
     cover.append(link, actions);
   }
   if (race.connected) {
+    showRaceLevels(cover);
     const ready = raceButton(race.selfReady ? 'Ждём старта' : 'Готов', 'ready-duel', () => race.net.ready());
-    ready.disabled = race.selfReady;
+    ready.disabled = race.selfReady || race.levelPending;
     cover.append(ready);
   }
 }

@@ -8,7 +8,8 @@
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
   const digits = (value, min) => Array.isArray(value) && value.length === 81 &&
     value.every(d => Number.isInteger(d) && d >= min && d <= 9);
-  const sheetIsValid = state => state && Number.isInteger(state.level) && state.level >= 0 && state.level < 5 &&
+  const validLevel = level => Number.isInteger(level) && level >= 0 && level < 5;
+  const sheetIsValid = state => state && validLevel(state.level) &&
     digits(state.puzzle, 0) && state.puzzle.includes(0) && state.puzzle.some(Boolean);
 
   class DuelNetwork {
@@ -19,6 +20,7 @@
       this.selfReady = false;
       this.otherReady = false;
       this.bestRtt = Infinity;
+      this.revision = 0;
       this.onVisibility = () => { if (!document.hidden && this.token) this.poll(); };
       this.onPageHide = () => {
         // A page restored from the back-forward cache should visibly end the old session.
@@ -78,7 +80,13 @@
     host(sheet) {
       if (this.phase !== 'idle') return;
       if (!sheetIsValid(sheet)) return this.fail('Не удалось подготовить задачу.');
-      return this.connect('host', '/rooms', {level:sheet.level, puzzle:sheet.puzzle});
+      const {level, puzzle, sheets} = sheet;
+      if (sheets !== undefined && (!Array.isArray(sheets) || sheets.length !== 5 ||
+          !sheets.every((p, i) => sheetIsValid({level:i, puzzle:p})) ||
+          !puzzle.every((d,i) => d === sheets[level][i]))) {
+        return this.fail('Не удалось подготовить задачи для всех уровней.');
+      }
+      return this.connect('host', '/rooms', {level, puzzle, sheets});
     }
 
     join(roomId) {
@@ -129,9 +137,10 @@
       if (!this.active || this.polling || !this.token) return;
       clearTimeout(this.pollTimer);
       this.polling = true;
+      const revision = this.revision;
       try {
         const state = await this.request(this.roomPath);
-        if (this.active) this.apply(state);
+        if (this.active && revision === this.revision && !this.levelPending) this.apply(state);
       } catch (err) {
         if (!this.active) return;
         if ([401,403,404,410].includes(err.status)) this.fail(err.message);
@@ -154,13 +163,24 @@
       // A poll started before a mutation can finish after its response.
       if (state.serverNow < this.latestTime) return;
       this.latestTime = state.serverNow;
+      const self = this.selfReady || Boolean(this.role === 'host' ? state.hostReady : state.guestReady);
+      const other = this.otherReady || Boolean(this.role === 'host' ? state.guestReady : state.hostReady);
+      // Old rooms expose a single shared sheet and do not accept level changes.
+      const hostLevel = validLevel(state.hostLevel) ? state.hostLevel : state.level;
+      const guestLevel = validLevel(state.guestLevel) ? state.guestLevel : state.level;
+      const canChooseLevel = state.canChooseLevel === true && !self && !state.closed &&
+        !state.winner && !Number.isFinite(state.startAt);
+      const changed = this.sheet?.level !== state.level || this.sheet.hostLevel !== hostLevel ||
+        this.sheet.guestLevel !== guestLevel || this.sheet.canChooseLevel !== canChooseLevel ||
+        !this.sheet.puzzle.every((d,i) => d === state.puzzle[i]);
+      if (changed) {
+        this.sheet = {level:state.level, puzzle:state.puzzle.slice(), hostLevel, guestLevel, canChooseLevel};
+      }
       if (state.guestJoined && this.phase === 'waiting') {
-        this.sheet = {level:state.level, puzzle:state.puzzle.slice()};
         this.phase = 'lobby';
         this.notify('connected', {role:this.role, level:this.sheet.level, puzzle:this.sheet.puzzle.slice()});
       }
-      const self = this.selfReady || Boolean(this.role === 'host' ? state.hostReady : state.guestReady);
-      const other = this.otherReady || Boolean(this.role === 'host' ? state.guestReady : state.hostReady);
+      if (changed) this.notify('levels', {...this.sheet, puzzle:this.sheet.puzzle.slice()});
       if (self !== this.selfReady || other !== this.otherReady) {
         this.selfReady = self;
         this.otherReady = other;
@@ -195,9 +215,18 @@
     }
 
     ready() {
-      if (this.phase !== 'lobby' || this.selfReady || this.readyPending) return;
+      if (this.phase !== 'lobby' || this.selfReady || this.readyPending || this.levelPending) return;
       this.readyPending = true;
       this.action('ready', {}).finally(() => { this.readyPending = false; });
+    }
+
+    async chooseLevel(level) {
+      if (!validLevel(level) || !['waiting','lobby'].includes(this.phase) ||
+          !this.sheet?.canChooseLevel || this.selfReady || this.readyPending || this.levelPending) return false;
+      if (this.sheet.level === level) return true;
+      this.levelPending = true;
+      try { return await this.action('level', {level}); }
+      finally { this.levelPending = false; }
     }
 
     finish(values) {
@@ -210,14 +239,24 @@
     }
 
     async action(name, body) {
+      this.revision++;
       try {
         const state = await this.retry(this.roomPath + '/' + name, {body});
-        if (this.active) this.apply(state);
+        if (!this.active) return false;
+        this.apply(state);
+        return this.phase !== 'closed' && (name !== 'level' || this.sheet.level === body.level);
       } catch (err) {
-        if (!this.active) return;
-        if ([401,403,404,410].includes(err.status)) return this.fail(err.message);
-        this.notify('rejected', {message:err.status ? err.message : 'Сервис не подтвердил запрос. Попробуйте ещё раз.'});
+        if (!this.active) return false;
+        if ([401,403,404,410].includes(err.status)) {
+          this.fail(err.message);
+          return false;
+        }
+        this.notify('rejected', {action:name, message:err.status ? err.message : 'Сервис не подтвердил запрос. Попробуйте ещё раз.'});
         this.poll();
+        return false;
+      } finally {
+        // Discard reads initiated during a write that arrive after the write response.
+        this.revision++;
       }
     }
 

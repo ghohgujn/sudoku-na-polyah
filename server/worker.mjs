@@ -2,7 +2,7 @@
 const ttl = 12 * 60 * 60 * 1000;
 const countdown = 3000;
 const bodyLimit = 2048;
-const roomPath = /^\/rooms\/(sudoku-[0-9a-f]{32})(?:\/(join|ready|finish|leave))?$/;
+const roomPath = /^\/rooms\/(sudoku-[0-9a-f]{32})(?:\/(join|level|ready|finish|leave))?$/;
 const uuidV4 = /^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/i;
 const dbNow = "CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)";
 const text = new TextEncoder();
@@ -82,9 +82,37 @@ function validGrid(values, complete) {
   return complete ? filled === 81 : filled >= 17 && filled < 81;
 }
 
-function state(row) {
+function validLevel(level) {
+  return Number.isInteger(level) && level >= 0 && level < 5;
+}
+
+function encodeSheets(sheets, level, seed) {
+  if (sheets === undefined) return null;
+  if (!Array.isArray(sheets) || sheets.length !== 5 ||
+      !sheets.every(sheet => validGrid(sheet, false)) || sheets[level].join('') !== seed) {
+    throw new ApiError(400, 'Некорректный набор полей.');
+  }
+  // Each harder puzzle keeps a strict subset of the easier puzzle's givens.
+  for (let l = 1; l < sheets.length; l++) {
+    const easier = sheets[l - 1], harder = sheets[l];
+    if (harder.some((d, i) => d && d !== easier[i]) || !harder.some((d, i) => !d && easier[i])) {
+      throw new ApiError(400, 'Стартовые цифры пяти уровней должны быть вложены.');
+    }
+  }
+  return sheets.map(sheet => sheet.join('')).join('');
+}
+
+function sheetFor(row, level) {
+  return row.sheets ? row.sheets.slice(81 * level, 81 * (level + 1)) : row.puzzle;
+}
+
+function state(row, role) {
+  const guestLevel = row.guest_level ?? row.level;
+  const level = role === 'host' ? row.level : guestLevel;
   return {
-    level: row.level, puzzle: Array.from(row.puzzle, Number),
+    level, puzzle: Array.from(sheetFor(row, level), Number),
+    hostLevel: row.level, guestLevel,
+    canChooseLevel: !!row.sheets && !row[role + '_ready'] && !row.start_at && !row.closed && !row.winner,
     hostReady: !!row.host_ready, guestReady: !!row.guest_ready,
     guestJoined: row.guest_token !== null, startAt: row.start_at,
     serverNow: Date.now(), winner: row.winner,
@@ -104,8 +132,8 @@ async function readRoom(db, id) {
 }
 
 async function createRoom(request, db) {
-  const {requestId, level, puzzle} = await bodyFields(request, ['requestId', 'level', 'puzzle']);
-  if (!Number.isInteger(level) || level < 0 || level > 4 || !validGrid(puzzle, false)) {
+  const {requestId, level, puzzle, sheets} = await bodyFields(request, ['requestId', 'level', 'puzzle', 'sheets']);
+  if (!validLevel(level) || !validGrid(puzzle, false)) {
     throw new ApiError(400, 'Некорректное поле или уровень сложности.');
   }
   const attempt = attemptId(requestId);
@@ -114,17 +142,21 @@ async function createRoom(request, db) {
   const tokenHash = await digest(token);
   const id = 'sudoku-' + crypto.randomUUID().replaceAll('-', '');
   const seed = puzzle.join('');
+  const family = encodeSheets(sheets, level, seed);
   const now = Date.now();
   const insert = db.prepare(
-    'INSERT INTO duel_rooms (id, host_request, host_token, level, puzzle, expires_at) VALUES (?,?,?,?,?,?) ON CONFLICT(host_request) DO NOTHING'
-  ).bind(id, hostRequest, tokenHash, level, seed, now + ttl);
+    'INSERT INTO duel_rooms (id, host_request, host_token, level, puzzle, sheets, expires_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(host_request) DO NOTHING'
+  ).bind(id, hostRequest, tokenHash, level, seed, family, now + ttl);
   const [,, result] = await db.batch([
     db.prepare('DELETE FROM duel_rooms WHERE id IN (SELECT id FROM duel_rooms WHERE expires_at <= ? ORDER BY expires_at LIMIT 64)').bind(now),
     insert, db.prepare('SELECT * FROM duel_rooms WHERE host_request = ?').bind(hostRequest)
   ]);
   const row = live(result.results[0]);
-  if (row.level !== level || row.puzzle !== seed) throw new ApiError(409, 'Этот запрос уже использован для другого листа.');
-  return {roomId: row.id, token, role: 'host', state: state(row)};
+  // In a family the original seed identifies the initial level even if the host has since changed it.
+  if (row.sheets !== family || row.puzzle !== seed || (!family && row.level !== level)) {
+    throw new ApiError(409, 'Этот запрос уже использован для другого листа.');
+  }
+  return {roomId: row.id, token, role: 'host', state: state(row, 'host')};
 }
 
 async function joinRoom(request, db, id) {
@@ -133,13 +165,13 @@ async function joinRoom(request, db, id) {
   const tokenHash = await digest(token);
   // A single conditional write seats the guest. A retry by that same guest retains its seat.
   const [, result] = await db.batch([
-    db.prepare('UPDATE duel_rooms SET guest_token = ? WHERE id = ? AND guest_token IS NULL AND closed = 0 AND expires_at > ?').bind(tokenHash, id, Date.now()),
+    db.prepare('UPDATE duel_rooms SET guest_token = ?, guest_level = level WHERE id = ? AND guest_token IS NULL AND closed = 0 AND expires_at > ?').bind(tokenHash, id, Date.now()),
     db.prepare('SELECT * FROM duel_rooms WHERE id = ?').bind(id)
   ]);
   const row = live(result.results[0]);
   if (row.closed) throw new ApiError(410, 'Эта дуэль уже закрыта.');
   if (row.guest_token !== tokenHash) throw new ApiError(409, 'Второе место уже занято.');
-  return {roomId: id, token, role: 'guest', state: state(row)};
+  return {roomId: id, token, role: 'guest', state: state(row, 'guest')};
 }
 
 async function playerAction(request, db, id, action) {
@@ -149,11 +181,19 @@ async function playerAction(request, db, id, action) {
   const row = await readRoom(db, id);
   const role = hash === row.host_token ? 'host' : hash === row.guest_token ? 'guest' : null;
   if (!role) throw new ApiError(403, 'Неверный ключ игрока.');
-  if (!action) return state(row);
-  const body = await bodyFields(request, action === 'finish' ? ['values'] : []);
-  if (row.closed || row.winner) return state(row);
+  if (!action) return state(row, role);
+  const body = await bodyFields(request, {finish: ['values'], level: ['level']}[action] || []);
+  if (action !== 'level' && (row.closed || row.winner)) return state(row, role);
   let update;
   switch (action) {
+    case 'level': {
+      if (!validLevel(body.level)) throw new ApiError(400, 'Некорректный уровень сложности.');
+      const col = role === 'host' ? 'level' : 'guest_level';
+      update = db.prepare(`UPDATE duel_rooms SET ${col} = ? WHERE id = ? AND sheets IS NOT NULL
+        AND ${role}_ready = 0 AND start_at IS NULL AND closed = 0 AND winner IS NULL AND expires_at > ${dbNow}
+        RETURNING id`).bind(body.level, id);
+      break;
+    }
     case 'ready': {
       if (!row.guest_token) throw new ApiError(409, 'Дождитесь второго игрока.');
       const other = role === 'host' ? 'guest_ready' : 'host_ready';
@@ -164,7 +204,9 @@ async function playerAction(request, db, id, action) {
     }
     case 'finish': {
       if (!row.start_at || Date.now() < row.start_at) throw new ApiError(409, 'Дождитесь старта дуэли.');
-      if (!validGrid(body.values, true) || body.values.some((n, i) => row.puzzle[i] !== '0' && +row.puzzle[i] !== n)) {
+      // The easiest sheet contains all givens across the family, including this player's sheet.
+      const givens = sheetFor(row, 0);
+      if (!validGrid(body.values, true) || body.values.some((n, i) => givens[i] !== '0' && +givens[i] !== n)) {
         throw new ApiError(422, 'Решение не сходится. Можно продолжить игру.');
       }
       update = db.prepare(`UPDATE duel_rooms SET winner = ?, finish_at = ${dbNow} WHERE id = ?
@@ -175,8 +217,10 @@ async function playerAction(request, db, id, action) {
       update = db.prepare('UPDATE duel_rooms SET closed = 1 WHERE id = ? AND winner IS NULL AND closed = 0').bind(id);
       break;
   }
-  const [, result] = await db.batch([update, db.prepare('SELECT * FROM duel_rooms WHERE id = ?').bind(id)]);
-  return state(live(result.results[0]));
+  const [change, result] = await db.batch([update, db.prepare('SELECT * FROM duel_rooms WHERE id = ?').bind(id)]);
+  const updated = live(result.results[0]);
+  if (action === 'level' && !change.results.length) throw new ApiError(409, 'Изменение сложности недоступно.');
+  return state(updated, role);
 }
 
 async function dispatch(request, env) {
